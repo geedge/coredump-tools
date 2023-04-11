@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
 	"coredump-handler/config"
 	"coredump-handler/logger"
@@ -17,6 +18,8 @@ import (
 	"github.com/containerd/containerd/namespaces"
 )
 
+const chunkSize = 1024 * 1024 * 1024 // 1GB
+
 func judgeMemory(pipe_config config.Pipeconfig) (bool, error) {
 	percent, err := strconv.ParseFloat(pipe_config.Total_file_mem_limit[:len(pipe_config.Total_file_mem_limit)-1], 64)
 	if err != nil {
@@ -32,8 +35,10 @@ func judgeMemory(pipe_config config.Pipeconfig) (bool, error) {
 	syscall.Statfs(wd, &stat)
 	// 剩余空间的大小为块的数量 * 每个块的大小
 	// stat.Bfree表示可用的块的数量，stat.Bsize表示每个块的大小
-	usedSpacePer := float64(int64(stat.Blocks)-int64(stat.Bfree)) / int64(stat.Blocks)
-	if usedSpacePer >= percent {
+	usedSpace := (int64(stat.Blocks) - int64(stat.Bfree))
+	totalSpace := int64(stat.Blocks)
+	usage := float64(usedSpace) / float64(totalSpace)
+	if usage >= percent {
 		return false, nil
 	}
 	return true, nil
@@ -125,6 +130,54 @@ func writeCoreDump() error {
 	}
 	return nil
 }
+func compress() error {
+	// Create a new zip archive.
+	dest := "coredump.info"
+	zipfile, err := os.Create(dest + ".zip")
+	if err != nil {
+		return err
+	}
+	defer zipfile.Close()
+
+	// Create a new zip writer.
+	zipwriter := zip.NewWriter(zipfile)
+	defer zipwriter.Close()
+
+	// Create a zip file header.
+	header := &zip.FileHeader{
+		Name:   dest,
+		Method: zip.Deflate,
+	}
+
+	// Write the header to the zip file.
+	writer, err := zipwriter.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+
+	// Copy the dataStream to the zip file in chunks.
+	for i := int64(0); ; i += chunkSize {
+		// Calculate the size of this chunk.
+		data := make([]byte, chunkSize)
+		n, err := os.Stdin.Read(data)
+		if err != nil && err != io.EOF {
+			return err
+		}
+
+		// Compress this chunk.
+		_, err = writer.Write(data[:n])
+		if err != nil {
+			return err
+		}
+
+		// Check if we've reached the end of the dataStream.
+		if n < chunkSize {
+			break
+		}
+	}
+
+	return nil
+}
 func main() {
 	err := Chdir("/root/pipe/corepipe")
 	if err != nil {
@@ -173,8 +226,15 @@ func main() {
 	if err != nil {
 		logger.Logger.Println(err)
 	}
-	err = writeCoreDump()
-	if err != nil {
-		logger.Logger.Println(err)
+	if pipe_config.Save_model == 0 {
+		err = writeCoreDump()
+		if err != nil {
+			logger.Logger.Println(err)
+		}
+	} else if pipe_config.Save_model == 1 {
+		err = compress()
+		if err != nil {
+			logger.Logger.Println(err)
+		}
 	}
 }
