@@ -20,7 +20,7 @@ import (
 
 const chunkSize = 1024 * 1024 * 1024 // 1GB
 
-func judgeMemory(pipe_config config.Pipeconfig) (bool, error) {
+func isMemorySufficient(pipe_config config.Pipeconfig) (bool, error) {
 	percent, err := strconv.ParseFloat(pipe_config.Total_file_mem_limit[:len(pipe_config.Total_file_mem_limit)-1], 64)
 	if err != nil {
 		return false, err
@@ -56,7 +56,7 @@ func createCoreDumpDir(pipe_config *config.Pipeconfig, args []string) error {
 	}
 	return nil
 }
-func Chdir(dir string) error {
+func changeDirectory(dir string) error {
 	if err := os.Chdir(dir); err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func writeCoreConfig(data string) error {
 	fmt.Printf("Wrote %d bytes to file\n", len(data))
 	return nil
 }
-func writeCoreDump() error {
+func writeCoreDumpToFile() error {
 	file, err := os.Create("coredump.info")
 	if err != nil {
 		return err
@@ -179,42 +179,50 @@ func compress() error {
 	return nil
 }
 func main() {
-	err := Chdir("/root/pipe/corepipe")
+	//切换到config文件路径
+	err := changeDirectory("/root/pipe/corepipe")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	//读取config文件并初始化
 	pipe_config, err := config.PipeInit()
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	flag, err := judgeMemory(pipe_config)
+	//判断硬盘使用率
+	flag, err := isMemorySufficient(pipe_config)
 	if err != nil && !flag {
 		fmt.Println(err)
 		return
 	}
+	//判断参数传入是否符合要求
 	if len(os.Args) < 4 {
 		fmt.Println("parameter passing exception")
 		return
 	}
+	//创建存储coredump内容文件夹
 	err = createCoreDumpDir(&pipe_config, os.Args)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	err = Chdir(pipe_config.File_base_path)
+	//切换至存储coredump目录
+	err = changeDirectory(pipe_config.File_base_path)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	//日志功能初始化
 	err = logger.Init()
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	logger.Logger.Println("logger init ok!")
+	//查找发生coredump进程对应的container id
 	container_id, err := getContainerId(os.Args[1])
+	//根据查找到的container id查找对应的image name
 	var image_id string
 	if err == nil && len(container_id) != 0 {
 		image_id, err = getImageId(container_id, pipe_config.Containered_sock_path)
@@ -222,12 +230,14 @@ func main() {
 			logger.Logger.Println(err)
 		}
 	}
+	//将image name写入coredump config
 	err = writeCoreConfig(image_id)
 	if err != nil {
 		logger.Logger.Println(err)
 	}
+	//根据配置项选择存储coredump文件方式
 	if pipe_config.Save_model == 0 {
-		err = writeCoreDump()
+		err = writeCoreDumpToFile()
 		if err != nil {
 			logger.Logger.Println(err)
 		}
