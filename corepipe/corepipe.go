@@ -156,23 +156,18 @@ func compress() error {
 	}
 
 	// Copy the dataStream to the zip file in chunks.
-	for i := int64(0); ; i += chunkSize {
-		// Calculate the size of this chunk.
-		data := make([]byte, chunkSize)
-		n, err := os.Stdin.Read(data)
+	buf := make([]byte, 1024)
+	for {
+		n, err := io.ReadAtLeast(os.Stdin, buf, 1)
 		if err != nil && err != io.EOF {
 			return err
 		}
-
-		// Compress this chunk.
-		_, err = writer.Write(data[:n])
+		if n == 0 {
+			break
+		}
+		_, err = writer.Write(buf[:n])
 		if err != nil {
 			return err
-		}
-
-		// Check if we've reached the end of the dataStream.
-		if n < chunkSize {
-			break
 		}
 	}
 
