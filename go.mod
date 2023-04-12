@@ -2,7 +2,10 @@ module coredump-handler
 
 go 1.20
 
-require github.com/containerd/containerd v1.7.0
+require (
+	github.com/containerd/containerd v1.7.0
+	github.com/coreos/go-systemd/v22 v22.5.0
+)
 
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230106234847-43070de90fa1 // indirect
@@ -33,7 +36,6 @@ require (
 	github.com/opencontainers/runc v1.1.4 // indirect
 	github.com/opencontainers/runtime-spec v1.1.0-rc.1 // indirect
 	github.com/opencontainers/selinux v1.11.0 // indirect
-	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	go.opencensus.io v0.24.0 // indirect

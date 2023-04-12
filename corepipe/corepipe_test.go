@@ -196,7 +196,7 @@ func TestGetImageId(t *testing.T) {
 			name: "get image id successfully",
 			input: input{
 				container_id: "invalid",
-				sock_path:    "/run/containerd/containerd.sock",
+				sock_path:    "/run/k3s/containerd/containerd.sock",
 			},
 			want:    "",
 			wantErr: true,

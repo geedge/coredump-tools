@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"context"
 	"coredump-handler/config"
-	"coredump-handler/logger"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/namespaces"
+	"github.com/coreos/go-systemd/v22/journal"
 )
 
 const chunkSize = 1024 * 1024 * 1024 // 1GB
@@ -80,7 +80,6 @@ func getImageId(container_id string, sock_path string) (string, error) {
 	// 连接 containerd daemon
 	client, err := containerd.New(sock_path)
 	if err != nil {
-		logger.Logger.Println(err)
 		return "", err
 	}
 	defer client.Close()
@@ -88,13 +87,11 @@ func getImageId(container_id string, sock_path string) (string, error) {
 	ctx := namespaces.WithNamespace(context.Background(), "k8s.io")
 	container, err := client.LoadContainer(ctx, container_id)
 	if err != nil {
-		logger.Logger.Println(err)
 		return "", err
 	}
 	// 获取容器关联的镜像信息
 	imageRef, err := container.Image(ctx)
 	if err != nil {
-		logger.Logger.Println(err)
 		return "", err
 	}
 	return imageRef.Name(), nil
@@ -173,46 +170,41 @@ func compress() error {
 
 	return nil
 }
+
 func main() {
 	//切换到config文件路径
 	err := changeDirectory("/root/pipe/corepipe")
 	if err != nil {
-		fmt.Println(err)
+		journal.Print(journal.PriErr, err.Error())
 		return
 	}
 	//读取config文件并初始化
 	pipe_config, err := config.PipeInit()
 	if err != nil {
-		fmt.Println(err)
+		journal.Print(journal.PriErr, err.Error())
 		return
 	}
 	//判断硬盘使用率
 	flag, err := isMemorySufficient(pipe_config)
 	if err != nil && !flag {
-		fmt.Println(err)
+		journal.Print(journal.PriErr, err.Error())
 		return
 	}
 	//判断参数传入是否符合要求
 	if len(os.Args) < 4 {
-		fmt.Println("parameter passing exception")
+		journal.Print(journal.PriErr, "parameter passing exception")
 		return
 	}
 	//创建存储coredump内容文件夹
 	err = createCoreDumpDir(&pipe_config, os.Args)
 	if err != nil {
-		fmt.Println(err)
+		journal.Print(journal.PriErr, err.Error())
 		return
 	}
 	//切换至存储coredump目录
 	err = changeDirectory(pipe_config.File_base_path)
 	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	//日志功能初始化
-	err = logger.Init()
-	if err != nil {
-		fmt.Println(err)
+		journal.Print(journal.PriErr, err.Error())
 		return
 	}
 	//查找发生coredump进程对应的container id
@@ -222,24 +214,24 @@ func main() {
 	if err == nil && len(container_id) != 0 {
 		image_id, err = getImageId(container_id, pipe_config.Containered_sock_path)
 		if err != nil {
-			logger.Logger.Println(err)
+			journal.Print(journal.PriInfo, err.Error())
 		}
 	}
 	//将image name写入coredump config
 	err = writeCoreConfig(image_id)
 	if err != nil {
-		logger.Logger.Println(err)
+		journal.Print(journal.PriInfo, err.Error())
 	}
 	//根据配置项选择存储coredump文件方式
 	if pipe_config.Save_model == 0 {
 		err = writeCoreDumpToFile()
 		if err != nil {
-			logger.Logger.Println(err)
+			journal.Print(journal.PriErr, err.Error())
 		}
 	} else if pipe_config.Save_model == 1 {
 		err = compress()
 		if err != nil {
-			logger.Logger.Println(err)
+			journal.Print(journal.PriErr, err.Error())
 		}
 	}
 }
