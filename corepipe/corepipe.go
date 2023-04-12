@@ -20,7 +20,7 @@ import (
 
 const chunkSize = 1024 * 1024 * 1024 // 1GB
 
-func isMemorySufficient(pipe_config config.Pipeconfig) (bool, error) {
+func isDiskSufficient(pipe_config config.Pipeconfig) (bool, error) {
 	percent, err := strconv.ParseFloat(pipe_config.Total_file_mem_limit[:len(pipe_config.Total_file_mem_limit)-1], 64)
 	if err != nil {
 		return false, err
@@ -185,7 +185,7 @@ func main() {
 		return
 	}
 	//判断硬盘使用率
-	flag, err := isMemorySufficient(pipe_config)
+	flag, err := isDiskSufficient(pipe_config)
 	if err != nil && !flag {
 		journal.Print(journal.PriErr, err.Error())
 		return

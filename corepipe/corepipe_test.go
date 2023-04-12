@@ -53,7 +53,7 @@ func TestIsMemorySufficient(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := isMemorySufficient(tt.input.pipe_config)
+			got, err := isDiskSufficient(tt.input.pipe_config)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("isMemorySufficient() error = %v, wantErr %v", err, tt.wantErr)
 				return
