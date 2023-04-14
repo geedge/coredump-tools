@@ -109,7 +109,8 @@ func getImageId(container_id string, sock_path string) (string, error) {
 	return imageRef.Name(), nil
 }
 func writeCoreConfig(config types.Coredump_config) error {
-	file, err := os.Create("coredump.config")
+	filename := fmt.Sprintf("%s_%s_%d_coredump.config", config.Initial_ns_pid, config.Process_ns_pid, config.Timestap)
+	file, err := os.Create(filename)
 	if err != nil {
 		return err
 	}
@@ -120,8 +121,9 @@ func writeCoreConfig(config types.Coredump_config) error {
 	}
 	return nil
 }
-func writeCoreDumpToFile() error {
-	file, err := os.Create("coredump.info")
+func writeCoreDumpToFile(config types.Coredump_config) error {
+	filename := fmt.Sprintf("%s_%s_%d_coredump.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestap)
+	file, err := os.Create(filename)
 	if err != nil {
 		return err
 	}
@@ -153,10 +155,10 @@ func writeCoreDumpToFile() error {
 	// }
 	return nil
 }
-func compress() error {
+func compress(config types.Coredump_config) error {
 	// Create a new zip archive.
-	dest := "coredump.info"
-	zipfile, err := os.Create(dest + ".zip")
+	filename := fmt.Sprintf("%s_%s_%d_coredump.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestap)
+	zipfile, err := os.Create(filename + ".zip")
 	if err != nil {
 		return err
 	}
@@ -168,7 +170,7 @@ func compress() error {
 
 	// Create a zip file header.
 	header := &zip.FileHeader{
-		Name:   dest,
+		Name:   filename,
 		Method: zip.Deflate,
 	}
 
@@ -235,12 +237,12 @@ func main() {
 	}
 	//根据配置项选择存储coredump文件方式
 	if pipe_config.Save_model == 0 {
-		err = writeCoreDumpToFile()
+		err = writeCoreDumpToFile(coredump_config)
 		if err != nil {
 			journal.Print(journal.PriErr, err.Error())
 		}
 	} else if pipe_config.Save_model == 1 {
-		err = compress()
+		err = compress(coredump_config)
 		if err != nil {
 			journal.Print(journal.PriErr, err.Error())
 		}
