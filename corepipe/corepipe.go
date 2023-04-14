@@ -127,20 +127,30 @@ func writeCoreDumpToFile() error {
 	}
 	defer file.Close()
 
-	// 从标准输入流中读取数据，并将其写入文件中
-	buf := make([]byte, 1024)
-	for {
-		n, err := io.ReadAtLeast(os.Stdin, buf, 1)
-		if err != nil && err != io.EOF {
-			return err
-		}
-		if n == 0 {
-			break
-		}
-		if _, err := file.Write(buf[:n]); err != nil {
-			return err
-		}
-	}
+	// 创建一个管道
+	reader, writer := io.Pipe()
+	// 将标准输入连接到管道的写入端
+	go func() {
+		defer writer.Close()
+		io.Copy(writer, os.Stdin)
+	}()
+
+	// 从管道的读取端将内容写入文件
+	io.Copy(file, reader)
+
+	// buf := make([]byte, 1024)
+	// for {
+	// 	n, err := io.ReadAtLeast(os.Stdin, buf, 1)
+	// 	if err != nil && err != io.EOF {
+	// 		return err
+	// 	}
+	// 	if n == 0 {
+	// 		break
+	// 	}
+	// 	if _, err := file.Write(buf[:n]); err != nil {
+	// 		return err
+	// 	}
+	// }
 	return nil
 }
 func compress() error {
@@ -167,22 +177,7 @@ func compress() error {
 	if err != nil {
 		return err
 	}
-
-	// Copy the dataStream to the zip file in chunks.
-	buf := make([]byte, 1024)
-	for {
-		n, err := io.ReadAtLeast(os.Stdin, buf, 1)
-		if err != nil && err != io.EOF {
-			return err
-		}
-		if n == 0 {
-			break
-		}
-		_, err = writer.Write(buf[:n])
-		if err != nil {
-			return err
-		}
-	}
+	io.Copy(writer, os.Stdin)
 
 	return nil
 }
