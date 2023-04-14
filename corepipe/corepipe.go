@@ -176,6 +176,8 @@ func main() {
 	flag.StringVar(&coredump_config.Corepipe_config_path, "configpath", "", "configfile's path")
 	flag.Int64Var(&coredump_config.Timestap, "t", 0, "the time of coredump")
 	flag.Parse()
+	info := fmt.Sprintf("start handle coredump initialize command line parameters. -P=%s -p=%s -E=%s -configpath=%s -t=%d", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestap)
+	journal.Print(journal.PriInfo, info)
 	coredump_config.Process_exe_path = strings.Replace(coredump_config.Process_exe_path, "!", "/", -1)
 	//判断参数读取是否正确
 	err := argsJudge()
