@@ -1,14 +1,14 @@
 package main
 
 import (
-	"coredump-handler/config"
 	"coredump-handler/logger"
+	"coredump-handler/types"
 	"net"
 	"os/exec"
 	"syscall"
 )
 
-func coredumpInit(coreconfig config.Coreconfig) error {
+func coredumpInit(coreconfig types.Coreconfig) error {
 	cmd := exec.Command("sysctl", "-w", "kernel.core_pattern='"+coreconfig.Core_pattern+"'")
 	err := cmd.Run()
 	if err != nil {
@@ -32,7 +32,7 @@ func coredumpInit(coreconfig config.Coreconfig) error {
 	return nil
 }
 
-func coredumpHandler(coreconfig config.Coreconfig) error {
+func coredumpHandler(coreconfig types.Coreconfig) error {
 	syscall.Unlink(coreconfig.Socket_path)
 	laddr, err := net.ResolveUnixAddr("unix", coreconfig.Socket_path)
 	if err != nil {

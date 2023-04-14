@@ -1,25 +1,13 @@
 package config
 
 import (
+	"coredump-handler/types"
 	"encoding/json"
 	"io/ioutil"
 )
 
-type Coreconfig struct {
-	Core_pattern     string
-	Core_limited     string
-	Core__pipe_limit string
-	Socket_path      string
-}
-type Pipeconfig struct {
-	Save_model            int //0为文件保存 1为压缩保存 2为minidump保存
-	File_base_path        string
-	Total_file_mem_limit  string
-	Containered_sock_path string
-}
-
-func Init() (Coreconfig, error) {
-	var config Coreconfig
+func Init() (types.Coreconfig, error) {
+	var config types.Coreconfig
 	content, err := ioutil.ReadFile("./config.json")
 	if err != nil {
 		return config, err
@@ -27,9 +15,9 @@ func Init() (Coreconfig, error) {
 	err = json.Unmarshal(content, &config)
 	return config, err
 }
-func PipeInit() (Pipeconfig, error) {
-	var config Pipeconfig
-	content, err := ioutil.ReadFile("./pipe-config.json")
+func PipeInit(config_path string) (types.Pipeconfig, error) {
+	var config types.Pipeconfig
+	content, err := ioutil.ReadFile(config_path)
 	if err != nil {
 		return config, err
 	}

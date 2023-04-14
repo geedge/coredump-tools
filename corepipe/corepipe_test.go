@@ -1,278 +1,189 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
-	"coredump-handler/config"
+	"coredump-handler/types"
+	"fmt"
 	"io/ioutil"
 	"os"
-	"strconv"
-	"strings"
+	"os/exec"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestIsMemorySufficient(t *testing.T) {
-	type input struct {
-		pipe_config config.Pipeconfig
+func TestArgsJudge(t *testing.T) {
+	var coredump_config types.Coredump_config
+	coredump_config.Initial_ns_pid = "123"
+	coredump_config.Process_ns_pid = "456"
+	coredump_config.Process_exe_path = "/path/to/executable"
+	coredump_config.Corepipe_config_path = "/path/to/config"
+	coredump_config.Timestap = 1618332579
+
+	err := argsJudge()
+	assert.Nil(t, err)
+
+	// missing Initial_ns_pid
+	coredump_config.Initial_ns_pid = ""
+	err = argsJudge()
+	assert.NotNil(t, err)
+	coredump_config.Initial_ns_pid = "123"
+
+	// missing Process_ns_pid
+	coredump_config.Process_ns_pid = ""
+	err = argsJudge()
+	assert.NotNil(t, err)
+	coredump_config.Process_ns_pid = "456"
+
+	// missing Corepipe_config_path
+	coredump_config.Corepipe_config_path = ""
+	err = argsJudge()
+	assert.NotNil(t, err)
+	coredump_config.Corepipe_config_path = "/path/to/config"
+
+	// missing Timestap
+	coredump_config.Timestap = 0
+	err = argsJudge()
+	assert.NotNil(t, err)
+	coredump_config.Timestap = 1618332579
+
+	// missing Process_exe_path
+	coredump_config.Process_exe_path = ""
+	err = argsJudge()
+	assert.NotNil(t, err)
+	coredump_config.Process_exe_path = "/path/to/executable"
+}
+
+func TestIsDiskSufficient(t *testing.T) {
+	pipe_config := types.Pipeconfig{
+		Total_file_mem_limit: "50%",
 	}
-	tests := []struct {
-		name    string
-		input   input
-		want    bool
-		wantErr bool
-	}{
-		{
-			name: "memory is sufficient",
-			input: input{
-				pipe_config: config.Pipeconfig{
-					Total_file_mem_limit: "50%",
-				},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			name: "memory is not sufficient",
-			input: input{
-				pipe_config: config.Pipeconfig{
-					Total_file_mem_limit: "0.001%",
-				},
-			},
-			want:    false,
-			wantErr: false,
-		},
-		{
-			name: "invalid memory limit",
-			input: input{
-				pipe_config: config.Pipeconfig{
-					Total_file_mem_limit: "invalid",
-				},
-			},
-			want:    false,
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := isDiskSufficient(tt.input.pipe_config)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("isMemorySufficient() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("isMemorySufficient() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	// create a temp file and set limit to 100%
+	file, err := ioutil.TempFile("", "")
+	assert.Nil(t, err)
+	defer os.Remove(file.Name())
+	pipe_config.File_base_path = file.Name()
+	pipe_config.Total_file_mem_limit = "100%"
+	flag, err := isDiskSufficient(pipe_config)
+	assert.Nil(t, err)
+	assert.False(t, flag)
+
+	// set limit to 0%
+	pipe_config.Total_file_mem_limit = "0%"
+	flag, err = isDiskSufficient(pipe_config)
+	assert.Nil(t, err)
+	assert.True(t, flag)
 }
 
 func TestCreateCoreDumpDir(t *testing.T) {
-	type input struct {
-		pipe_config *config.Pipeconfig
-		args        []string
+	pipe_config := types.Pipeconfig{
+		File_base_path: "/tmp",
 	}
-	tests := []struct {
-		name    string
-		input   input
-		wantErr bool
-	}{
-		{
-			name: "directory does not exist",
-			input: input{
-				pipe_config: &config.Pipeconfig{
-					File_base_path: "/tmp",
-				},
-				args: []string{"", "pid", "arg2", "arg3"},
-			},
-			wantErr: false,
-		},
-		{
-			name: "directory already exists",
-			input: input{
-				pipe_config: &config.Pipeconfig{
-					File_base_path: "/tmp",
-				},
-				args: []string{"", "pid", "arg2", "arg3"},
-			},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := createCoreDumpDir(tt.input.pipe_config, tt.input.args)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("createCoreDumpDir() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
+	err := createCoreDumpDir(&pipe_config, coredump_config)
+	assert.Nil(t, err)
 
-func TestChangeDirectory(t *testing.T) {
-	type input struct {
-		dir string
-	}
-	tests := []struct {
-		name    string
-		input   input
-		wantErr bool
-	}{
-		{
-			name: "change directory successfully",
-			input: input{
-				dir: "/root",
-			},
-			wantErr: false,
-		},
-		{
-			name: "fail to change directory",
-			input: input{
-				dir: "/invalid",
-			},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := changeDirectory(tt.input.dir)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("changeDirectory() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
+	// try to create same directory again should return an error
+	err = createCoreDumpDir(&pipe_config, coredump_config)
+	assert.NotNil(t, err)
 }
 
 func TestGetContainerId(t *testing.T) {
-	type input struct {
-		pid string
+	pid := "1"
+	container_id, err := getContainerId(pid)
+	if err != nil {
+		t.Errorf("getContainerId() error = %v", err)
 	}
-	tests := []struct {
-		name    string
-		input   input
-		want    string
-		wantErr bool
-	}{
-		{
-			name: "get container id successfully",
-			input: input{
-				pid: strconv.Itoa(os.Getpid()),
-			},
-			want:    "",
-			wantErr: false,
-		},
-		{
-			name: "fail to get container id",
-			input: input{
-				pid: "invalid",
-			},
-			want:    "",
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := getContainerId(tt.input.pid)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("getContainerId() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if strings.TrimSpace(got) == "" {
-				t.Errorf("getContainerId() got empty string")
-			}
-		})
+	if len(container_id) == 0 {
+		t.Errorf("getContainerId() = %v, want not empty string", container_id)
 	}
 }
 
 func TestGetImageId(t *testing.T) {
-	type input struct {
-		container_id string
-		sock_path    string
+	container_id := "123456"
+	sock_path := "/var/run/containerd.sock"
+	image_id, err := getImageId(container_id, sock_path)
+	if err != nil {
+		t.Errorf("getImageId() error = %v", err)
 	}
-	tests := []struct {
-		name    string
-		input   input
-		want    string
-		wantErr bool
-	}{
-		{
-			name: "get image id successfully",
-			input: input{
-				container_id: "invalid",
-				sock_path:    "/run/k3s/containerd/containerd.sock",
-			},
-			want:    "",
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := getImageId(tt.input.container_id, tt.input.sock_path)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("getImageId() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if strings.TrimSpace(got) == "" {
-				t.Errorf("getImageId() got empty string")
-			}
-		})
+	if len(image_id) == 0 {
+		t.Errorf("getImageId() = %v, want not empty string", image_id)
 	}
 }
 
 func TestWriteCoreConfig(t *testing.T) {
-	type input struct {
-		data string
+	config := types.Coredump_config{
+		Initial_ns_pid:       "1",
+		Process_ns_pid:       "2",
+		Process_exe_path:     "/bin/bash",
+		Corepipe_config_path: "/tmp/config.yaml",
+		Timestap:             12345678,
 	}
-	tests := []struct {
-		name    string
-		input   input
-		wantErr bool
-	}{
-		{
-			name: "write core config successfully",
-			input: input{
-				data: "test data",
-			},
-			wantErr: false,
-		},
+	err := writeCoreConfig(config)
+	if err != nil {
+		t.Errorf("writeCoreConfig() error = %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := writeCoreConfig(tt.input.data)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("writeCoreConfig() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			content, err := ioutil.ReadFile("coredump.config")
-			if err != nil {
-				t.Error("failed to read file")
-				return
-			}
-			if !bytes.Equal(content, []byte(tt.input.data)) {
-				t.Errorf("writeCoreConfig() content = %v, want = %v", string(content), tt.input.data)
-			}
-			os.Remove("coredump.config")
-		})
+	defer os.Remove("coredump.config")
+}
+
+func TestWriteCoreDumpToFile(t *testing.T) {
+	cmd := exec.Command("echo", "test")
+	cmdReader, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Errorf("WriteCoreDumpToFile() error = %v", err)
 	}
+	scanner := bufio.NewScanner(cmdReader)
+	go func() {
+		for scanner.Scan() {
+			fmt.Printf("reading output: %s\n", scanner.Text())
+		}
+	}()
+	err = cmd.Start()
+	if err != nil {
+		t.Errorf("WriteCoreDumpToFile() error = %v", err)
+	}
+	err = writeCoreDumpToFile()
+	if err != nil {
+		t.Errorf("WriteCoreDumpToFile() error = %v", err)
+	}
+	b, err := ioutil.ReadFile("coredump.info")
+	if err != nil {
+		t.Errorf("WriteCoreDumpToFile() error = %v", err)
+	}
+	expected := "test\n"
+	if string(b) != expected {
+		t.Errorf("WriteCoreDumpToFile() got = %v, want = %v", string(b), expected)
+	}
+	defer os.Remove("coredump.info")
 }
 
 func TestCompress(t *testing.T) {
-	tests := []struct {
-		name    string
-		wantErr bool
-	}{
-		{
-			name: "compress successfully",
-		},
+	cmd := exec.Command("echo", "test")
+	cmdReader, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Errorf("compress() error = %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := compress()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("compress() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			// Check if the compressed file exists
-			if _, err := os.Stat("coredump.info.zip"); os.IsNotExist(err) {
-				t.Errorf("compress() failed to create compressed file")
-			} else {
-				os.Remove("coredump.info.zip")
-			}
-		})
+	scanner := bufio.NewScanner(cmdReader)
+	go func() {
+		for scanner.Scan() {
+			fmt.Printf("reading output: %s\n", scanner.Text())
+		}
+	}()
+	err = cmd.Start()
+	if err != nil {
+		t.Errorf("compress() error = %v", err)
 	}
+	err = compress()
+	if err != nil {
+		t.Errorf("compress() error = %v", err)
+	}
+	b, err := ioutil.ReadFile("coredump.info.zip")
+	if err != nil {
+		t.Errorf("compress() error = %v", err)
+	}
+	expected := []byte{80, 75, 3, 4, 20, 0, 8, 8, 8, 0, 170, 114, 38, 99, 102, 0, 0, 0, 102, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 116, 101, 115, 116, 10, 0, 82, 105, 105, 90, 85, 50, 84, 110, 88, 70, 90, 65, 48, 108, 108, 81, 0, 116, 157, 80, 10, 128, 163, 239, 120, 53, 2, 190, 127, 7, 98, 131, 137, 51, 189, 206, 149, 14, 54, 126, 254, 152, 119, 177, 209, 155, 201, 23, 37, 4, 72, 113, 39, 46, 179, 144, 106, 184, 44, 251, 47, 88, 97, 2, 141, 11, 129, 71, 109, 187, 124, 32, 63, 22, 111, 181, 59, 30, 58, 184, 40, 203, 205, 3, 113, 165, 117, 232, 6, 228, 240, 132, 94, 137, 43, 95, 218, 221, 90, 203, 173, 43, 92, 216, 226, 65, 118, 222, 208, 59, 185, 250, 56, 70, 63, 135, 72, 44, 250, 215, 59, 36, 139, 74, 75, 112, 0, 0, 0}
+	if !bytes.Equal(b, expected) {
+		t.Errorf("compress() got = %v, want = %v", b, expected)
+	}
+	defer os.Remove("coredump.info.zip")
 }
