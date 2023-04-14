@@ -127,6 +127,13 @@ func TestWriteCoreConfig(t *testing.T) {
 }
 
 func TestWriteCoreDumpToFile(t *testing.T) {
+	config := types.Coredump_config{
+		Initial_ns_pid:       "1",
+		Process_ns_pid:       "2",
+		Process_exe_path:     "/bin/bash",
+		Corepipe_config_path: "/tmp/config.yaml",
+		Timestap:             12345678,
+	}
 	cmd := exec.Command("echo", "test")
 	cmdReader, err := cmd.StdoutPipe()
 	if err != nil {
@@ -142,7 +149,7 @@ func TestWriteCoreDumpToFile(t *testing.T) {
 	if err != nil {
 		t.Errorf("WriteCoreDumpToFile() error = %v", err)
 	}
-	err = writeCoreDumpToFile()
+	err = writeCoreDumpToFile(config)
 	if err != nil {
 		t.Errorf("WriteCoreDumpToFile() error = %v", err)
 	}
@@ -158,6 +165,13 @@ func TestWriteCoreDumpToFile(t *testing.T) {
 }
 
 func TestCompress(t *testing.T) {
+	config := types.Coredump_config{
+		Initial_ns_pid:       "1",
+		Process_ns_pid:       "2",
+		Process_exe_path:     "/bin/bash",
+		Corepipe_config_path: "/tmp/config.yaml",
+		Timestap:             12345678,
+	}
 	cmd := exec.Command("echo", "test")
 	cmdReader, err := cmd.StdoutPipe()
 	if err != nil {
@@ -173,7 +187,7 @@ func TestCompress(t *testing.T) {
 	if err != nil {
 		t.Errorf("compress() error = %v", err)
 	}
-	err = compress()
+	err = compress(config)
 	if err != nil {
 		t.Errorf("compress() error = %v", err)
 	}
