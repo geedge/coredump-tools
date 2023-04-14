@@ -139,20 +139,6 @@ func writeCoreDumpToFile(config types.Coredump_config) error {
 
 	// 从管道的读取端将内容写入文件
 	io.Copy(file, reader)
-
-	// buf := make([]byte, 1024)
-	// for {
-	// 	n, err := io.ReadAtLeast(os.Stdin, buf, 1)
-	// 	if err != nil && err != io.EOF {
-	// 		return err
-	// 	}
-	// 	if n == 0 {
-	// 		break
-	// 	}
-	// 	if _, err := file.Write(buf[:n]); err != nil {
-	// 		return err
-	// 	}
-	// }
 	return nil
 }
 func compress(config types.Coredump_config) error {
