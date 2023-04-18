@@ -26,8 +26,8 @@ const chunkSize = 1024 * 1024 * 1024 // 1GB
 var coredump_config types.Coredump_config
 
 func argsJudge() error {
-	if coredump_config.Initial_ns_pid == "" || coredump_config.Process_ns_pid == "" || coredump_config.Corepipe_config_path == "" || coredump_config.Timestap == 0 || coredump_config.Process_exe_path == "" {
-		err := fmt.Sprintf("Failed to initialize command line parameters. -P=%s -p=%s -E=%s -configpath=%s -t=%d", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestap)
+	if coredump_config.Initial_ns_pid == "" || coredump_config.Process_ns_pid == "" || coredump_config.Corepipe_config_path == "" || coredump_config.Timestamp == 0 || coredump_config.Process_exe_path == "" || coredump_config.GID == "" || coredump_config.Hostname == "" || coredump_config.UID == "" || coredump_config.Signal == -1 {
+		err := fmt.Sprintf("Failed to initialize command line parameters. -P=%s -p=%s -E=%s -configpath=%s -t=%d -g=%s -h=%s -s=%d -u=%s", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestamp, coredump_config.GID, coredump_config.Hostname, coredump_config.Signal, coredump_config.UID)
 		return errors.New(err)
 	}
 	return nil
@@ -56,7 +56,7 @@ func isDiskSufficient(pipe_config types.Pipeconfig) (bool, error) {
 	return true, nil
 }
 func createCoreDumpDir(pipe_config *types.Pipeconfig, args types.Coredump_config) error {
-	pipe_config.File_base_path = fmt.Sprintf("%s/%s_%s_%d", pipe_config.File_base_path, args.Initial_ns_pid, args.Process_ns_pid, args.Timestap)
+	pipe_config.File_base_path = fmt.Sprintf("%s/%s_%s_%d", pipe_config.File_base_path, args.Initial_ns_pid, args.Process_ns_pid, args.Timestamp)
 	dirName := pipe_config.File_base_path
 	if _, err := os.Stat(dirName); os.IsNotExist(err) {
 		// 目录不存在，创建目录
@@ -109,7 +109,7 @@ func getImageId(container_id string, sock_path string) (string, error) {
 	return imageRef.Name(), nil
 }
 func writeCoreConfig(config types.Coredump_config) error {
-	filename := fmt.Sprintf("%s_%s_%d_coredump.config", config.Initial_ns_pid, config.Process_ns_pid, config.Timestap)
+	filename := fmt.Sprintf("%s_%s_%d_coredump.config", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -122,7 +122,7 @@ func writeCoreConfig(config types.Coredump_config) error {
 	return nil
 }
 func writeCoreDumpToFile(config types.Coredump_config) error {
-	filename := fmt.Sprintf("%s_%s_%d_coredump.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestap)
+	filename := fmt.Sprintf("%s_%s_%d_coredump.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -143,7 +143,7 @@ func writeCoreDumpToFile(config types.Coredump_config) error {
 }
 func compress(config types.Coredump_config) error {
 	// Create a new zip archive.
-	filename := fmt.Sprintf("%s_%s_%d_coredump.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestap)
+	filename := fmt.Sprintf("%s_%s_%d_coredump.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
 	zipfile, err := os.Create(filename + ".zip")
 	if err != nil {
 		return err
@@ -174,9 +174,13 @@ func main() {
 	flag.StringVar(&coredump_config.Process_ns_pid, "p", "", "process ns pid")
 	flag.StringVar(&coredump_config.Process_exe_path, "E", "", "pathname of executable process")
 	flag.StringVar(&coredump_config.Corepipe_config_path, "configpath", "", "configfile's path")
-	flag.Int64Var(&coredump_config.Timestap, "t", 0, "the time of coredump")
+	flag.Int64Var(&coredump_config.Timestamp, "t", 0, "the time of coredump")
+	flag.StringVar(&coredump_config.GID, "g", "", "Numeric real GID of dumped process.")
+	flag.StringVar(&coredump_config.Hostname, "h", "", "Hostname (same as nodename returned by uname).")
+	flag.IntVar(&coredump_config.Signal, "s", -1, "Number of signal causing dump")
+	flag.StringVar(&coredump_config.UID, "u", "", "Numeric real UID of dumped process.")
 	flag.Parse()
-	info := fmt.Sprintf("start handle coredump initialize command line parameters. -P=%s -p=%s -E=%s -configpath=%s -t=%d", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestap)
+	info := fmt.Sprintf("start handle coredump initialize command line parameters. -P=%s -p=%s -E=%s -configpath=%s -t=%d -g=%s -h=%s -s=%d -u=%s", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestamp, coredump_config.GID, coredump_config.Hostname, coredump_config.Signal, coredump_config.UID)
 	journal.Print(journal.PriInfo, info)
 	coredump_config.Process_exe_path = strings.Replace(coredump_config.Process_exe_path, "!", "/", -1)
 	//判断参数读取是否正确
@@ -203,6 +207,7 @@ func main() {
 		journal.Print(journal.PriErr, err.Error())
 		return
 	}
+	coredump_config.Storage = pipe_config.File_base_path
 	//切换至存储coredump目录
 	err = changeDirectory(pipe_config.File_base_path)
 	if err != nil {

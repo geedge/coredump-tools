@@ -16,7 +16,12 @@ type Coredump_config struct {
 	Initial_ns_pid       string
 	Process_ns_pid       string
 	Process_exe_path     string
-	Timestap             int64
+	Timestamp            int64
 	Corepipe_config_path string
 	Image_id             string
+	UID                  string
+	GID                  string
+	Signal               int
+	Hostname             string
+	Storage              string
 }

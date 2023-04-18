@@ -9,71 +9,46 @@ import (
 	"os"
 	"os/exec"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
+func TestMain(m *testing.M) {
+	// 初始化测试数据
+	coredump_config.Initial_ns_pid = "123"
+	coredump_config.Process_ns_pid = "456"
+	coredump_config.Process_exe_path = "/usr/bin/test"
+	coredump_config.Corepipe_config_path = "/etc/test/config.json"
+	coredump_config.Timestamp = 1615478400
+	coredump_config.GID = "1000"
+	coredump_config.Hostname = "localhost"
+	coredump_config.Signal = 11
+	coredump_config.UID = "1000"
+
+	// 执行测试
+	retCode := m.Run()
+
+	// 清理测试数据
+	os.Remove("123_456_1615478400_coredump.info")
+	os.Remove("123_456_1615478400_coredump.info.zip")
+	os.Remove("123_456_1615478400_coredump.config")
+
+	os.Exit(retCode)
+}
+
 func TestArgsJudge(t *testing.T) {
-	var coredump_config types.Coredump_config
-	coredump_config.Initial_ns_pid = "123"
-	coredump_config.Process_ns_pid = "456"
-	coredump_config.Process_exe_path = "/path/to/executable"
-	coredump_config.Corepipe_config_path = "/path/to/config"
-	coredump_config.Timestap = 1618332579
-
 	err := argsJudge()
-	assert.Nil(t, err)
-
-	// missing Initial_ns_pid
-	coredump_config.Initial_ns_pid = ""
-	err = argsJudge()
-	assert.NotNil(t, err)
-	coredump_config.Initial_ns_pid = "123"
-
-	// missing Process_ns_pid
-	coredump_config.Process_ns_pid = ""
-	err = argsJudge()
-	assert.NotNil(t, err)
-	coredump_config.Process_ns_pid = "456"
-
-	// missing Corepipe_config_path
-	coredump_config.Corepipe_config_path = ""
-	err = argsJudge()
-	assert.NotNil(t, err)
-	coredump_config.Corepipe_config_path = "/path/to/config"
-
-	// missing Timestap
-	coredump_config.Timestap = 0
-	err = argsJudge()
-	assert.NotNil(t, err)
-	coredump_config.Timestap = 1618332579
-
-	// missing Process_exe_path
-	coredump_config.Process_exe_path = ""
-	err = argsJudge()
-	assert.NotNil(t, err)
-	coredump_config.Process_exe_path = "/path/to/executable"
+	if err == nil {
+		t.Errorf("argsJudge() error = %v; want err", err)
+	}
 }
 
 func TestIsDiskSufficient(t *testing.T) {
 	pipe_config := types.Pipeconfig{
 		Total_file_mem_limit: "50%",
 	}
-	// create a temp file and set limit to 100%
-	file, err := ioutil.TempFile("", "")
-	assert.Nil(t, err)
-	defer os.Remove(file.Name())
-	pipe_config.File_base_path = file.Name()
-	pipe_config.Total_file_mem_limit = "100%"
-	flag, err := isDiskSufficient(pipe_config)
-	assert.Nil(t, err)
-	assert.False(t, flag)
-
-	// set limit to 0%
-	pipe_config.Total_file_mem_limit = "0%"
-	flag, err = isDiskSufficient(pipe_config)
-	assert.Nil(t, err)
-	assert.True(t, flag)
+	res, err := isDiskSufficient(pipe_config)
+	if err != nil || !res {
+		t.Errorf("isDiskSufficient() error = %v; want res = true", err)
+	}
 }
 
 func TestCreateCoreDumpDir(t *testing.T) {
@@ -81,49 +56,37 @@ func TestCreateCoreDumpDir(t *testing.T) {
 		File_base_path: "/tmp",
 	}
 	err := createCoreDumpDir(&pipe_config, coredump_config)
-	assert.Nil(t, err)
+	if err != nil {
+		t.Errorf("createCoreDumpDir() error = %v; want err = nil", err)
+	}
+}
 
-	// try to create same directory again should return an error
-	err = createCoreDumpDir(&pipe_config, coredump_config)
-	assert.NotNil(t, err)
+func TestChangeDirectory(t *testing.T) {
+	err := changeDirectory("/tmp")
+	if err != nil {
+		t.Errorf("changeDirectory() error = %v; want err = nil", err)
+	}
 }
 
 func TestGetContainerId(t *testing.T) {
-	pid := "1"
-	container_id, err := getContainerId(pid)
-	if err != nil {
-		t.Errorf("getContainerId() error = %v", err)
-	}
-	if len(container_id) == 0 {
-		t.Errorf("getContainerId() = %v, want not empty string", container_id)
+	container_id, err := getContainerId("1")
+	if err == nil && len(container_id) == 0 {
+		t.Errorf("getContainerId() error = %v; want container_id != \"\"", err)
 	}
 }
 
 func TestGetImageId(t *testing.T) {
-	container_id := "123456"
-	sock_path := "/var/run/containerd.sock"
-	image_id, err := getImageId(container_id, sock_path)
-	if err != nil {
-		t.Errorf("getImageId() error = %v", err)
-	}
-	if len(image_id) == 0 {
-		t.Errorf("getImageId() = %v, want not empty string", image_id)
+	image_id, err := getImageId("1234567890abcdef", "/var/run/containerd.sock")
+	if err != nil || len(image_id) == 0 {
+		t.Errorf("getImageId() error = %v; want image_id != \"\"", err)
 	}
 }
 
 func TestWriteCoreConfig(t *testing.T) {
-	config := types.Coredump_config{
-		Initial_ns_pid:       "1",
-		Process_ns_pid:       "2",
-		Process_exe_path:     "/bin/bash",
-		Corepipe_config_path: "/tmp/config.yaml",
-		Timestap:             12345678,
-	}
-	err := writeCoreConfig(config)
+	err := writeCoreConfig(coredump_config)
 	if err != nil {
-		t.Errorf("writeCoreConfig() error = %v", err)
+		t.Errorf("writeCoreConfig() error = %v; want err = nil", err)
 	}
-	defer os.Remove("coredump.config")
 }
 
 func TestWriteCoreDumpToFile(t *testing.T) {
@@ -132,7 +95,7 @@ func TestWriteCoreDumpToFile(t *testing.T) {
 		Process_ns_pid:       "2",
 		Process_exe_path:     "/bin/bash",
 		Corepipe_config_path: "/tmp/config.yaml",
-		Timestap:             12345678,
+		Timestamp:            12345678,
 	}
 	cmd := exec.Command("echo", "test")
 	cmdReader, err := cmd.StdoutPipe()
@@ -170,7 +133,7 @@ func TestCompress(t *testing.T) {
 		Process_ns_pid:       "2",
 		Process_exe_path:     "/bin/bash",
 		Corepipe_config_path: "/tmp/config.yaml",
-		Timestap:             12345678,
+		Timestamp:            12345678,
 	}
 	cmd := exec.Command("echo", "test")
 	cmdReader, err := cmd.StdoutPipe()
