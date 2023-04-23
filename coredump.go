@@ -1,8 +1,8 @@
 package main
 
 import (
-	"coredump-handler/logger"
 	"coredump-handler/types"
+	"fmt"
 	"net"
 	"os/exec"
 	"syscall"
@@ -46,19 +46,18 @@ func coredumpHandler(coreconfig types.Coreconfig) error {
 	for {
 		c, err := listener.Accept()
 		if err != nil {
-			logger.Logger.Println(err)
+			fmt.Println(err)
 		}
 		go HandleServerConn(c)
 	}
-	return nil
 }
 func HandleServerConn(c net.Conn) {
 	defer c.Close()
 	buf := make([]byte, 1024)
 	nr, err := c.Read(buf)
 	if err != nil {
-		logger.Logger.Println(err)
+		fmt.Println(err)
 		return
 	}
-	logger.Logger.Println(buf[0:nr])
+	fmt.Println(buf[0:nr])
 }

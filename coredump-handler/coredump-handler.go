@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"regexp"
 	"strconv"
@@ -76,7 +75,7 @@ func changeDirectory(dir string) error {
 }
 func getContainerId(pid string) (string, error) {
 	cgroup_path := fmt.Sprintf("/proc/%s/cgroup", pid)
-	content, err := ioutil.ReadFile(cgroup_path)
+	content, err := os.ReadFile(cgroup_path)
 	if err != nil {
 		return "", err
 	}
@@ -170,21 +169,27 @@ func compress(config types.Coredump_config) error {
 	return nil
 }
 func main() {
+	info := fmt.Sprintf("start handle coredump")
+	journal.Print(journal.PriInfo, info)
 	flag.StringVar(&coredump_config.Initial_ns_pid, "P", "", "initial ns pid")
 	flag.StringVar(&coredump_config.Process_ns_pid, "p", "", "process ns pid")
 	flag.StringVar(&coredump_config.Process_exe_path, "E", "", "pathname of executable process")
 	flag.StringVar(&coredump_config.Corepipe_config_path, "configpath", "", "configfile's path")
 	flag.Int64Var(&coredump_config.Timestamp, "t", 0, "the time of coredump")
 	flag.StringVar(&coredump_config.GID, "g", "", "Numeric real GID of dumped process.")
-	flag.StringVar(&coredump_config.Hostname, "h", "", "Hostname (same as nodename returned by uname).")
 	flag.IntVar(&coredump_config.Signal, "s", -1, "Number of signal causing dump")
 	flag.StringVar(&coredump_config.UID, "u", "", "Numeric real UID of dumped process.")
 	flag.Parse()
-	info := fmt.Sprintf("start handle coredump initialize command line parameters. -P=%s -p=%s -E=%s -configpath=%s -t=%d -g=%s -h=%s -s=%d -u=%s", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestamp, coredump_config.GID, coredump_config.Hostname, coredump_config.Signal, coredump_config.UID)
+	var err error
+	coredump_config.Hostname, err = os.Hostname()
+	if err != nil {
+		journal.Print(journal.PriErr, err.Error())
+	}
+	info = fmt.Sprintf("initialize command line parameters. -P=%s -p=%s -E=%s -configpath=%s -t=%d -g=%s -h=%s -s=%d -u=%s", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestamp, coredump_config.GID, coredump_config.Hostname, coredump_config.Signal, coredump_config.UID)
 	journal.Print(journal.PriInfo, info)
 	coredump_config.Process_exe_path = strings.Replace(coredump_config.Process_exe_path, "!", "/", -1)
 	//判断参数读取是否正确
-	err := argsJudge()
+	err = argsJudge()
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
 		return
@@ -223,21 +228,23 @@ func main() {
 			journal.Print(journal.PriInfo, err.Error())
 		}
 	}
-	//将image name写入coredump config
-	err = writeCoreConfig(coredump_config)
-	if err != nil {
-		journal.Print(journal.PriInfo, err.Error())
-	}
 	//根据配置项选择存储coredump文件方式
 	if pipe_config.Save_model == 0 {
 		err = writeCoreDumpToFile(coredump_config)
 		if err != nil {
 			journal.Print(journal.PriErr, err.Error())
 		}
+		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d_coredump.info", pipe_config.File_base_path, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
 	} else if pipe_config.Save_model == 1 {
 		err = compress(coredump_config)
 		if err != nil {
 			journal.Print(journal.PriErr, err.Error())
 		}
+		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d_coredump.info.zip", pipe_config.File_base_path, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
+	}
+	//将image name写入coredump config
+	err = writeCoreConfig(coredump_config)
+	if err != nil {
+		journal.Print(journal.PriInfo, err.Error())
 	}
 }
