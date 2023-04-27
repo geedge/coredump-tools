@@ -53,7 +53,7 @@ func TestIsDiskSufficient(t *testing.T) {
 
 func TestCreateCoreDumpDir(t *testing.T) {
 	pipe_config := types.Pipeconfig{
-		File_base_path: "/tmp",
+		Storage: "/tmp",
 	}
 	err := createCoreDumpDir(&pipe_config, coredump_config)
 	if err != nil {

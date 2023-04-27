@@ -7,17 +7,18 @@ type Coreconfig struct {
 	Socket_path      string
 }
 type Pipeconfig struct {
-	Save_model            int //0为文件保存 1为压缩保存 2为minidump保存
-	File_base_path        string
-	Total_file_mem_limit  string
-	Containered_sock_path string
+	Compress              bool   //是否压缩
+	Storage_type          int    //是否存储为minidump格式
+	Storage               string //存储位置
+	Total_file_mem_limit  string //磁盘空间限制
+	Containered_sock_path string //ctr sock地址
 }
 type Coredump_config struct {
 	Initial_ns_pid       string
 	Process_ns_pid       string
 	Process_exe_path     string
 	Timestamp            int64
-	Corepipe_config_path string
+	Corepipe_config_path string `json:"-"`
 	Image_id             string
 	UID                  string
 	GID                  string

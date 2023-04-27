@@ -1,0 +1,67 @@
+variables:
+  GIT_STRATEGY: "clone"
+  BUILD_BASED_IMAGE_CENTOS7: "git.mesalab.cn:7443/mesa_platform/build-env:master"
+  BUILD_BASED_IMAGE_ROCKYLINUX8: "git.mesalab.cn:7443/mesa_platform/build-env:rockylinux"
+
+stages:
+- prebuild
+- build-centos7
+- build-rockylinux8
+
+.build_rpm:
+  variables:
+    BUILD_PADDING_PREFIX: /tmp/padding_for_CPACK_RPM_BUILD_SOURCE_DIRS_PREFIX_PREFIX_PREFIX_PREFIX_PREFIX_PREFIX/
+    TESTING_VERSION_BUILD: 0
+  before_script:
+    - mkdir -p $BUILD_PADDING_PREFIX/$CI_PROJECT_NAMESPACE/
+    - ln -s $CI_PROJECT_DIR $BUILD_PADDING_PREFIX/$CI_PROJECT_PATH
+    - cd $BUILD_PADDING_PREFIX/$CI_PROJECT_PATH
+    - chmod +x ./ci/travis.sh
+  script:
+    - yum makecache
+    - ./ci/travis.sh
+  tags:
+    - share
+
+feature_branch_build_rockylinux8:
+  image: $BUILD_BASED_IMAGE_ROCKYLINUX8
+  stage: build-rockylinux8
+  variables:
+    PACKAGE: 1
+    LIBYAML_BUILD: 1
+    TESTING_VERSION_BUILD: 1
+  extends: .build_rpm
+  except:
+    - tags
+    - /^dev-.*$/i
+    - /^rel-.*$/i
+    - /^master.*$/i
+
+develop_build_rockylinux8:
+  image: $BUILD_BASED_IMAGE_ROCKYLINUX8
+  stage: build-rockylinux8
+  variables:
+    PACKAGE: 1
+    UPLOAD: 1
+    LIBYAML_BUILD: 1
+    TESTING_VERSION_BUILD: 1
+    PULP3_RPM_REPO_NAME: tsg-testing-x86_64.el8
+    PULP3_RPM_DIST_NAME: tsg-testing-x86_64.el8
+  extends: .build_rpm
+  only:
+    - /^dev-.*$/i
+    - /^rel-.*$/i
+    - /^master.*$/i
+
+release_build_rockylinux8:
+  image: $BUILD_BASED_IMAGE_ROCKYLINUX8
+  stage: build-rockylinux8
+  variables:
+    PACKAGE: 1
+    UPLOAD: 1
+    LIBYAML_BUILD: 1
+    PULP3_RPM_REPO_NAME: tsg-stable-x86_64.el8
+    PULP3_RPM_DIST_NAME: tsg-stable-x86_64.el8
+  extends: .build_rpm
+  only:
+    - tags

@@ -30,25 +30,40 @@ func terminalSize() (width, height int, err error) {
 	}
 	return width, height, nil
 }
-func debug(config types.Coredump_config) error {
+func debug(config types.Coredump_config, command string) error {
 	// 使用kubectl命令执行debug操作
 	if config.Image_id != "" {
 		if config.Hostname == "" {
 			return errors.New("hostname must not be empty")
 		}
-		cmd := exec.Command("kubectl", "debug", "node/"+config.Hostname, "-it", "--image="+config.Image_id, "--image-pull-policy=Never", "-- bash")
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		fmt.Println(cmd.String())
-		input := fmt.Sprintf("you can exec   gdb %s /host%s get stack info", config.Process_exe_path, config.Storage)
-		fmt.Println(input)
-		if err := cmd.Start(); err != nil {
-			return err
-		}
-		err := cmd.Wait()
-		if err != nil {
-			return err
+		if command == "gdb" {
+			chmod := "cd" + filepath.Dir(config.Process_exe_path)
+			cmd := exec.Command("kubectl", "debug", "node/"+config.Hostname, "-it", "--image="+config.Image_id, "--image-pull-policy=Never", "--", "gdb", config.Process_exe_path, "/host"+config.Storage, "-ex", chmod)
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			fmt.Println(cmd.String())
+			if err := cmd.Start(); err != nil {
+				return err
+			}
+			err := cmd.Wait()
+			if err != nil {
+				return err
+			}
+		} else {
+			cmd := exec.Command("kubectl", "debug", "node/"+config.Hostname, "-it", "--image="+config.Image_id, "--image-pull-policy=Never", "--", command)
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			fmt.Println(cmd.String())
+			fmt.Println("exe=", config.Process_exe_path, "coredump=/host", config.Storage)
+			if err := cmd.Start(); err != nil {
+				return err
+			}
+			err := cmd.Wait()
+			if err != nil {
+				return err
+			}
 		}
 	} else { // 使用gdb命令进行命令行交互分析
 		cmd := exec.Command("gdb", config.Process_exe_path, config.Storage)
@@ -93,25 +108,28 @@ func WalkDirectory(dir string) {
 		fmt.Printf("Error walking directory %s: %v\n", dir, err)
 	}
 }
-func list() {
+func list(pid string) {
 	defaultWidth := 80
 	if width, _, err := terminalSize(); err == nil {
 		defaultWidth = int(width)
 	}
 	// 输出表头信息
-	fmt.Printf("%-6s %-6s %-6s %-15s %-20s %-15s %-10s %-20s %-20s\n",
-		"PID", "UID", "GID", "SIGNATURE", "TIMESTAMP", "FILE", "HOSTNAME", "IMAGE_NAME", "storge")
+	fmt.Printf("%-8s %-3s %-3s %-3s %-20s %-30s %-30s %-100s %-50s\n",
+		"PID", "UID", "GID", "SIG", "TIMESTAMP", "EXE", "HOSTNAME", "IMAGE", "STORGE")
 	fmt.Println(strings.Repeat("-", defaultWidth))
-
+	total := 0
 	// 输出配置信息
 	for _, c := range configs {
-		processExe := filepath.Base(c.Process_exe_path)
+		if pid != "" && strings.Compare(c.Initial_ns_pid, pid) != 0 {
+			continue
+		}
 		coreTime := time.Unix(c.Timestamp, 0).Format("2006-01-02 15:04:05")
-		fmt.Printf("%-6s %-6s %-6s %-15d %-20s %-15s %-10s %-20s %-20s\n",
-			c.Process_ns_pid, c.UID, c.GID, c.Signal, coreTime, processExe, c.Hostname, c.Image_id, c.Storage)
+		fmt.Printf("%-8s %-3s %-3s %-6d %-20s %-30s %-30s %-100s %-50s\n",
+			c.Initial_ns_pid, c.UID, c.GID, c.Signal, coreTime, c.Process_exe_path, c.Hostname, c.Image_id, c.Storage)
+		total += 1
 	}
 	fmt.Println()
-	fmt.Println("Total", len(configs), "coredumps")
+	fmt.Println("Total", total, "coredumps")
 }
 
 // Help 打印使用帮助
@@ -120,15 +138,22 @@ func Help() {
 	fmt.Println("list options:")
 	fmt.Println("  -dir string")
 	fmt.Println("        Directory path")
+	fmt.Println("  -p string")
+	fmt.Println("        Pid to matching")
+	fmt.Println("  -command string")
+	fmt.Println("        exe command when attach to pod")
 }
 
 func main() {
 	listCmd := flag.NewFlagSet("list", flag.ExitOnError)
 	debugCmd := flag.NewFlagSet("debug", flag.ExitOnError)
 	helpCmd := flag.NewFlagSet("help", flag.ExitOnError)
-
-	dirPath := flag.String("dir", "", "Directory path")
-
+	var dirPath, pid, command string
+	listCmd.StringVar(&pid, "p", "", "Pid to matching")
+	debugCmd.StringVar(&pid, "p", "", "Pid to matching")
+	listCmd.StringVar(&dirPath, "dir", "", "Directory path")
+	debugCmd.StringVar(&dirPath, "dir", "", "Directory path")
+	debugCmd.StringVar(&command, "command", "", "")
 	if len(os.Args) == 1 {
 		helpCmd.Usage()
 		os.Exit(1)
@@ -146,21 +171,31 @@ func main() {
 		os.Exit(1)
 	}
 	if listCmd.Parsed() {
-		if *dirPath == "" {
-			*dirPath = "/var/tmp"
+		if dirPath == "" {
+			dirPath = "/var/tmp"
 		}
-		WalkDirectory(*dirPath)
-		list()
+		WalkDirectory(dirPath)
+		list(pid)
 		return
 	}
 	if debugCmd.Parsed() {
-		if *dirPath == "" {
-			*dirPath = "/var/tmp"
+		if dirPath == "" {
+			dirPath = "/var/tmp"
 		}
-		WalkDirectory(*dirPath)
-		fmt.Println(configs[0])
-		if err := debug(configs[0]); err != nil {
-			fmt.Println(err)
+		if command == "" {
+			command = "gdb"
+		}
+		WalkDirectory(dirPath)
+		for _, config := range configs {
+			fmt.Println(config)
+			if strings.Compare(config.Initial_ns_pid, pid) == 0 || pid == "" {
+				err := debug(config, command)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					break
+				}
+			}
 		}
 		return
 	}

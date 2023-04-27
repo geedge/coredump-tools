@@ -55,8 +55,8 @@ func isDiskSufficient(pipe_config types.Pipeconfig) (bool, error) {
 	return true, nil
 }
 func createCoreDumpDir(pipe_config *types.Pipeconfig, args types.Coredump_config) error {
-	pipe_config.File_base_path = fmt.Sprintf("%s/%s_%s_%d", pipe_config.File_base_path, args.Initial_ns_pid, args.Process_ns_pid, args.Timestamp)
-	dirName := pipe_config.File_base_path
+	pipe_config.Storage = fmt.Sprintf("%s/%s_%s_%d_coredump", pipe_config.Storage, args.Initial_ns_pid, args.Process_ns_pid, args.Timestamp)
+	dirName := pipe_config.Storage
 	if _, err := os.Stat(dirName); os.IsNotExist(err) {
 		// 目录不存在，创建目录
 		if err := os.MkdirAll(dirName, os.ModePerm); err != nil {
@@ -212,9 +212,9 @@ func main() {
 		journal.Print(journal.PriErr, err.Error())
 		return
 	}
-	coredump_config.Storage = pipe_config.File_base_path
+	coredump_config.Storage = pipe_config.Storage
 	//切换至存储coredump目录
-	err = changeDirectory(pipe_config.File_base_path)
+	err = changeDirectory(pipe_config.Storage)
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
 		return
@@ -228,19 +228,22 @@ func main() {
 			journal.Print(journal.PriInfo, err.Error())
 		}
 	}
+	if coredump_config.Image_id == "" {
+		coredump_config.Image_id = "NULL"
+	}
 	//根据配置项选择存储coredump文件方式
-	if pipe_config.Save_model == 0 {
+	if pipe_config.Compress == false {
 		err = writeCoreDumpToFile(coredump_config)
 		if err != nil {
 			journal.Print(journal.PriErr, err.Error())
 		}
-		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d_coredump.info", pipe_config.File_base_path, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
-	} else if pipe_config.Save_model == 1 {
+		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d_coredump.info", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
+	} else if pipe_config.Compress == true {
 		err = compress(coredump_config)
 		if err != nil {
 			journal.Print(journal.PriErr, err.Error())
 		}
-		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d_coredump.info.zip", pipe_config.File_base_path, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
+		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d_coredump.info.zip", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
 	}
 	//将image name写入coredump config
 	err = writeCoreConfig(coredump_config)
