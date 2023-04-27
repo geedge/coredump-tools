@@ -1,3 +1,5 @@
+%{!?_topdir: %define _topdir %(pwd)}
+
 Name: coredump-tools
 Version: %{_version}
 Release: %{_release}
