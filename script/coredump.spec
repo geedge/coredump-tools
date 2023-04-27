@@ -1,13 +1,13 @@
 Name: coredump-tools
-Version: {_version}
-Release: {_release}
+Version: %{_version}
+Release: %{_release}
 Summary: tsg's coredump handler and tools
 Group: Applications/Internet
 License: GPL
 URL: https://git.mesalab.cn/linxin/coredump-handler
 
 
-Source0: coredump-tools-{_version}.tar.gz
+Source0: coredump-tools-%{_version}.tar.gz
 %define debug_package %{nil}
 %description
 This package contains the binary executable for coredump-handler and coredump-tool, as well as its configuration files.
