@@ -32,32 +32,19 @@ env | sort
 : "${NO_EXCEPTION:=OFF}"
 : "${NO_RTTI:=OFF}"
 : "${COMPILER_IS_GNUCXX:=OFF}"
+export VERSION_ID=$(./autorevision.sh -t sh -o version | grep VCS_TAG | sed 's/^.*v//g' | sed 's/"//g')
+yum install -y golang
+go version
+mkdir -p ./rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+tar -czvf ./rpmbuild/SOURCES/coredump-tools-${VERSION_ID}.tar.gz ../coredump-tools
+cp ./script/coredump.spec ./rpmbuild/SPECS
+rpmbuild --define "_version ${VERSION_ID}" --define "_release release" -ba ./rpmbuild/SPECS/coredump.spec
 
-yum install -y cligen-devel clixon-devel
-
-if [ -n "${LIBYAML_BUILD}" ]; then
-	git clone https://github.com/yaml/libyaml.git
-	cd libyaml
-	sed -i 's/^add_library.*$/add_library(yaml SHARED ${SRCS})/g' CMakeLists.txt
-	cmake3 .
-	make && make install
-	cd ..
-fi
-
-mkdir build || true
-
-cd build
-
-cmake3 -DVERSION_DAILY_BUILD=$TESTING_VERSION_BUILD ..
-
-if [ -n "${PACKAGE}" ]; then
-	make package
-fi
 ls -halt ./*.rpm
 
-if [ -n "${UPLOAD}" ]; then	
-	cp ~/rpm_upload_tools.py ./
-	python3 rpm_upload_tools.py ${PULP3_RPM_REPO_NAME} ${PULP3_RPM_DIST_NAME} *.rpm
-fi
+# if [ -n "${UPLOAD}" ]; then	
+# 	cp ~/rpm_upload_tools.py ./
+# 	python3 rpm_upload_tools.py ${PULP3_RPM_REPO_NAME} ${PULP3_RPM_DIST_NAME} *.rpm
+# fi
 
 
