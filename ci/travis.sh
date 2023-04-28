@@ -44,12 +44,12 @@ mv ../coredump-tools ../coredump-tools-${VERSION_ID}
 tar -czvf ./rpmbuild/SOURCES/coredump-tools-${VERSION_ID}.tar.gz ../coredump-tools-${VERSION_ID}
 cp ./script/coredump.spec ./rpmbuild/SPECS
 rpmbuild --define "_topdir `pwd`/rpmbuild" --define "_version ${VERSION_ID}" --define "_release release" -ba ./rpmbuild/SPECS/coredump.spec
-dnf install -y tree
-tree ../..
+cd /builds/linxin/coredump-tools-${VERSION_ID}/rpmbuild/RPMS/x86_64
+ls -halt ./*.rpm
 
-# if [ -n "${UPLOAD}" ]; then	
-# 	cp ~/rpm_upload_tools.py ./
-# 	python3 rpm_upload_tools.py ${PULP3_RPM_REPO_NAME} ${PULP3_RPM_DIST_NAME} *.rpm
-# fi
+if [ -n "${UPLOAD}" ]; then	
+	cp ~/rpm_upload_tools.py ./
+	python3 rpm_upload_tools.py ${PULP3_RPM_REPO_NAME} ${PULP3_RPM_DIST_NAME} *.rpm
+fi
 
 
