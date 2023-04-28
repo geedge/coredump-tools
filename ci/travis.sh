@@ -37,6 +37,8 @@ export VERSION_ID=$(./autorevision.sh -t sh -o version | grep VCS_TAG | sed 's/^
 export VERSION_ID="1.0.0"
 yum install -y golang
 go version
+export GOPROXY=https://proxy.golang.com.cn,direct
+go env
 mkdir -p ./rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 mv ../coredump-tools ../coredump-tools-${VERSION_ID}
 tar -czvf ./rpmbuild/SOURCES/coredump-tools-${VERSION_ID}.tar.gz ../coredump-tools-${VERSION_ID}
