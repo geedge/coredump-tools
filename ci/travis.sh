@@ -33,7 +33,7 @@ env | sort
 : "${NO_RTTI:=OFF}"
 : "${COMPILER_IS_GNUCXX:=OFF}"
 chmod +x autorevision.sh
-export VERSION_ID=$(./autorevision.sh -t sh -o version | grep VCS_TAG | sed 's/^.*v//g' | sed 's/"//g'| sed 's/[[:alpha:]]//g')
+export VERSION_ID=$(./autorevision.sh -t sh -o version | grep VCS_TAG | sed 's/^.*v//g' | sed 's/"//g'| sed 's/[[:alpha:]]//g'|tr -d "_=")
 # export VERSION_ID="1.0.0"
 yum install -y golang
 go version
