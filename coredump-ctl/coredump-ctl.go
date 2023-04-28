@@ -33,12 +33,24 @@ func terminalSize() (width, height int, err error) {
 func debug(config types.Coredump_config, command string) error {
 	// 使用kubectl命令执行debug操作
 	if config.Image_id != "" {
-		if config.Hostname == "" {
-			return errors.New("hostname must not be empty")
+		// 定义要运行的 kubectl 命令
+		command := "kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name} {end}'"
+
+		// 在 shell 中运行 kubectl 命令并读取输出
+		cmd := exec.Command("bash", "-c", command)
+		output, err := cmd.Output()
+		if err != nil {
+			return err
+		}
+
+		// 将输出字符串按空格拆分为字符串切片
+		nodes := strings.Split(strings.TrimSpace(string(output)), " ")
+		if len(nodes) == 0 {
+			return errors.New("the node list is empty")
 		}
 		if command == "gdb" {
 			chmod := "cd" + filepath.Dir(config.Process_exe_path)
-			cmd := exec.Command("kubectl", "debug", "node/"+config.Hostname, "-it", "--image="+config.Image_id, "--image-pull-policy=Never", "--", "gdb", config.Process_exe_path, "/host"+config.Storage, "-ex", chmod)
+			cmd := exec.Command("kubectl", "debug", "node/"+nodes[0], "-it", "--image="+config.Image_id, "--image-pull-policy=Never", "--", "gdb", config.Process_exe_path, "/host"+config.Storage, "-ex", chmod)
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr

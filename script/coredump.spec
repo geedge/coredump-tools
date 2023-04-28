@@ -25,15 +25,16 @@ cd ./coredump-ctl
 go build -o coredump-tool .
 cd ..
 %install
-mkdir -p %{buildroot}/etc/coredump-handler
 mkdir -p %{buildroot}/opt/tsg/coredump
-cp ./coredump-handler/coredump-handler %{buildroot}/opt/tsg/coredump
-cp ./config/config.json %{buildroot}/etc/coredump-handler
-cp ./coredump-ctl/coredump-tool %{buildroot}/opt/tsg/coredump
-%post
-echo "export PATH=/opt/tsg/coredump:$PATH" >>~/.bashrc
+mkdir -p %{buildroot}/opt/tsg/coredump/bin
+mkdir -p %{buildroot}/opt/tsg/coredump/etc
+cp ./coredump-handler/coredump-handler %{buildroot}/opt/tsg/coredump/bin
+cp ./config/config.json %{buildroot}/opt/tsg/coredump/etc
+cp ./coredump-ctl/coredump-tool %{buildroot}/opt/tsg/coredump/bin
+cp ./script/coredump-tools.sh %{buildroot}/etc/profile.d
 %files
 %defattr (-,root,root)
-/etc/coredump-handler/config.json
-/opt/tsg/coredump/coredump-handler
-/opt/tsg/coredump/coredump-tool
+/opt/tsg/coredump/etc/config.json
+/opt/tsg/coredump/bin/coredump-handler
+/opt/tsg/coredump/bin/coredump-tool
+/etc/profile.d/coredump-tools.sh

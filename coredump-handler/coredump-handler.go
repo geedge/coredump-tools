@@ -174,7 +174,7 @@ func main() {
 	flag.StringVar(&coredump_config.Initial_ns_pid, "P", "", "initial ns pid")
 	flag.StringVar(&coredump_config.Process_ns_pid, "p", "", "process ns pid")
 	flag.StringVar(&coredump_config.Process_exe_path, "E", "", "pathname of executable process")
-	flag.StringVar(&coredump_config.Corepipe_config_path, "configpath", "", "configfile's path")
+	flag.StringVar(&coredump_config.Corepipe_config_path, "C", "", "configfile's path")
 	flag.Int64Var(&coredump_config.Timestamp, "t", 0, "the time of coredump")
 	flag.StringVar(&coredump_config.GID, "g", "", "Numeric real GID of dumped process.")
 	flag.IntVar(&coredump_config.Signal, "s", -1, "Number of signal causing dump")
@@ -185,7 +185,7 @@ func main() {
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
 	}
-	info = fmt.Sprintf("initialize command line parameters. -P=%s -p=%s -E=%s -configpath=%s -t=%d -g=%s -h=%s -s=%d -u=%s", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestamp, coredump_config.GID, coredump_config.Hostname, coredump_config.Signal, coredump_config.UID)
+	info = fmt.Sprintf("initialize command line parameters. -P=%s -p=%s -E=%s -C=%s -t=%d -g=%s -h=%s -s=%d -u=%s", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestamp, coredump_config.GID, coredump_config.Hostname, coredump_config.Signal, coredump_config.UID)
 	journal.Print(journal.PriInfo, info)
 	coredump_config.Process_exe_path = strings.Replace(coredump_config.Process_exe_path, "!", "/", -1)
 	//判断参数读取是否正确
@@ -198,6 +198,9 @@ func main() {
 	pipe_config, err := config.PipeInit(coredump_config.Corepipe_config_path)
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
+		return
+	}
+	if pipe_config.Storage_type == 0 {
 		return
 	}
 	//判断硬盘使用率
