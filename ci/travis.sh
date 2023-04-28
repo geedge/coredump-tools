@@ -45,9 +45,7 @@ tar -czvf ./rpmbuild/SOURCES/coredump-tools-${VERSION_ID}.tar.gz ../coredump-too
 cp ./script/coredump.spec ./rpmbuild/SPECS
 rpmbuild --define "_topdir `pwd`/rpmbuild" --define "_version ${VERSION_ID}" --define "_release release" -ba ./rpmbuild/SPECS/coredump.spec
 dnf install -y tree
-cd ..
-cd ..
-tree
+tree ../..
 
 # if [ -n "${UPLOAD}" ]; then	
 # 	cp ~/rpm_upload_tools.py ./
