@@ -28,13 +28,17 @@ cd ..
 mkdir -p %{buildroot}/opt/tsg/coredump
 mkdir -p %{buildroot}/opt/tsg/coredump/bin
 mkdir -p %{buildroot}/opt/tsg/coredump/etc
+mkdir -p %{buildroot}/etc/profile.d
+mkdir -p %{buildroot}/usr/lib/tmpfiles.d
 cp ./coredump-handler/coredump-handler %{buildroot}/opt/tsg/coredump/bin
 cp ./config/config.json %{buildroot}/opt/tsg/coredump/etc
 cp ./coredump-ctl/coredump-tool %{buildroot}/opt/tsg/coredump/bin
 cp ./script/coredump-tools.sh %{buildroot}/etc/profile.d
+cp ./coredump.conf %{buildroot}/usr/lib/tmpfiles.d
 %files
 %defattr (-,root,root)
 /opt/tsg/coredump/etc/config.json
 /opt/tsg/coredump/bin/coredump-handler
 /opt/tsg/coredump/bin/coredump-tool
 /etc/profile.d/coredump-tools.sh
+/usr/lib/tmpfiles.d/coredump.conf
