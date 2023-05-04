@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"coredump-handler/types"
+	"coredump-tools/types"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -76,7 +76,7 @@ func TestGetContainerId(t *testing.T) {
 }
 
 func TestGetImageId(t *testing.T) {
-	image_id, err := getImageId("1234567890abcdef", "/var/run/containerd.sock")
+	image_id, err := getImageName("1234567890abcdef", "/var/run/containerd.sock")
 	if err != nil || len(image_id) == 0 {
 		t.Errorf("getImageId() error = %v; want image_id != \"\"", err)
 	}

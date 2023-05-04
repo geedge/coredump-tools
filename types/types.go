@@ -19,7 +19,7 @@ type Coredump_config struct {
 	Process_exe_path     string
 	Timestamp            int64
 	Corepipe_config_path string `json:"-"`
-	Image_id             string
+	Image_name           string
 	UID                  string
 	GID                  string
 	Signal               int

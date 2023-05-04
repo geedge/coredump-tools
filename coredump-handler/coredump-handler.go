@@ -3,8 +3,8 @@ package main
 import (
 	"archive/zip"
 	"context"
-	"coredump-handler/config"
-	"coredump-handler/types"
+	"coredump-tools/config"
+	"coredump-tools/types"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -87,7 +87,7 @@ func getContainerId(pid string) (string, error) {
 	containerID := match[1]
 	return containerID, nil
 }
-func getImageId(container_id string, sock_path string) (string, error) {
+func getImageName(container_id string, sock_path string) (string, error) {
 	// 连接 containerd daemon
 	client, err := containerd.New(sock_path)
 	if err != nil {
@@ -226,13 +226,13 @@ func main() {
 	container_id, err := getContainerId(coredump_config.Initial_ns_pid)
 	//根据查找到的container id查找对应的image name
 	if err == nil && len(container_id) != 0 {
-		coredump_config.Image_id, err = getImageId(container_id, pipe_config.Containered_sock_path)
+		coredump_config.Image_name, err = getImageName(container_id, pipe_config.Containered_sock_path)
 		if err != nil {
 			journal.Print(journal.PriInfo, err.Error())
 		}
 	}
-	if coredump_config.Image_id == "" {
-		coredump_config.Image_id = "NULL"
+	if coredump_config.Image_name == "" {
+		coredump_config.Image_name = "NULL"
 	}
 	//根据配置项选择存储coredump文件方式
 	if pipe_config.Compress == false {

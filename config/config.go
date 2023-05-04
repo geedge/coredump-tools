@@ -1,7 +1,7 @@
 package config
 
 import (
-	"coredump-handler/types"
+	"coredump-tools/types"
 	"encoding/json"
 	"io/ioutil"
 )
