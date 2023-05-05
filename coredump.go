@@ -1,7 +1,7 @@
 package main
 
 import (
-	"coredump-handler/types"
+	"coredump-tools/types"
 	"fmt"
 	"net"
 	"os/exec"
