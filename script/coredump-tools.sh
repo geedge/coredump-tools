@@ -1,1 +1,1 @@
-export PATH=/opt/tsg/coredump/bin
+export PATH=/opt/tsg/coredump/bin:$PATH
