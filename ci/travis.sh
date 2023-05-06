@@ -34,17 +34,18 @@ env | sort
 : "${COMPILER_IS_GNUCXX:=OFF}"
 chmod +x autorevision.sh
 export VERSION_ID=$(./autorevision.sh -t sh -o version | grep VCS_TAG | sed 's/^.*v//g' | sed 's/"//g'| sed 's/[[:alpha:]]//g'|tr -d "_=")
+export COMMIT_ID=$(./autorevision.sh -t sh -o version | grep VCS_SHORT_HASH | sed 's/^.*v//g' | sed 's/"//g')
 # export VERSION_ID="1.0.0"
 yum install -y golang
 go version
 export GOPROXY=https://proxy.golang.com.cn,direct
 go env
 mkdir -p ./rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-mv ../coredump-tools ../coredump-tools-${VERSION_ID}
-tar -czvf ./rpmbuild/SOURCES/coredump-tools-${VERSION_ID}.tar.gz ../coredump-tools-${VERSION_ID}
+mv ../coredump-tools ../coredump-tools-${VERSION_ID}-${COMMIT_ID}
+tar -czvf ./rpmbuild/SOURCES/coredump-tools-${VERSION_ID}-${COMMIT_ID}.tar.gz ../coredump-tools-${VERSION_ID}-${COMMIT_ID}
 cp ./script/coredump.spec ./rpmbuild/SPECS
-rpmbuild --define "_topdir `pwd`/rpmbuild" --define "_version ${VERSION_ID}" --define "_release release" -ba ./rpmbuild/SPECS/coredump.spec
-cd /builds/linxin/coredump-tools-${VERSION_ID}/rpmbuild/RPMS/x86_64
+rpmbuild --define "_topdir `pwd`/rpmbuild" --define "_version ${VERSION_ID}-${COMMIT_ID}" --define "_release release" -ba ./rpmbuild/SPECS/coredump.spec
+cd /builds/linxin/coredump-tools-${VERSION_ID}-${COMMIT_ID}/rpmbuild/RPMS/x86_64
 ls -halt ./*.rpm
 
 if [ -n "${UPLOAD}" ]; then	
