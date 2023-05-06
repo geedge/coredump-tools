@@ -5,6 +5,7 @@ import (
 	"coredump-tools/types"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"math/big"
@@ -197,19 +198,22 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 
 	// Wait for the Pod to be running and ready
 	fmt.Printf("Waiting for Pod %q to be ready...\n", podName)
-	for {
+	ready := false
+	for i := 0; i < 10; i++ {
 		result, err := clientset.CoreV1().Pods("default").Get(context.Background(), podName, metav1.GetOptions{})
 		if err != nil {
 			return podName, err
 		}
 		status := result.Status
 		if status.Phase == v1.PodRunning && len(status.ContainerStatuses) > 0 && status.ContainerStatuses[0].Ready {
+			ready = true
 			break
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
-	fmt.Printf("Pod %q is ready.\n", podName)
-
+	if !ready {
+		return podName, errors.New("create pod timeout")
+	}
 	// Exec into the container
 	// Create exec request
 	var cmd []string
