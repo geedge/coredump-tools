@@ -41,11 +41,11 @@ go version
 export GOPROXY=https://proxy.golang.com.cn,direct
 go env
 mkdir -p ./rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-mv ../coredump-tools ../coredump-tools-${VERSION_ID}-${COMMIT_ID}
-tar -czvf ./rpmbuild/SOURCES/coredump-tools-${VERSION_ID}-${COMMIT_ID}.tar.gz ../coredump-tools-${VERSION_ID}-${COMMIT_ID}
+mv ../coredump-tools ../coredump-tools-${VERSION_ID}
+tar -czvf ./rpmbuild/SOURCES/coredump-tools-${VERSION_ID}-${COMMIT_ID}.tar.gz ../coredump-tools-${VERSION_ID}
 cp ./script/coredump.spec ./rpmbuild/SPECS
-rpmbuild --define "_topdir `pwd`/rpmbuild" --define "_version ${VERSION_ID}-${COMMIT_ID}" --define "_release release" -ba ./rpmbuild/SPECS/coredump.spec
-cd /builds/linxin/coredump-tools-${VERSION_ID}-${COMMIT_ID}/rpmbuild/RPMS/x86_64
+rpmbuild --define "_topdir `pwd`/rpmbuild" --define "_version ${VERSION_ID}" --define "_release ${COMMIT_ID}" --define "_commit ${COMMIT_ID}" -ba ./rpmbuild/SPECS/coredump.spec
+cd /builds/linxin/coredump-tools-${VERSION_ID}/rpmbuild/RPMS/x86_64
 ls -halt ./*.rpm
 
 if [ -n "${UPLOAD}" ]; then	
