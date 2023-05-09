@@ -55,6 +55,12 @@ func isDiskSufficient(pipe_config types.Pipeconfig) (bool, error) {
 	return true, nil
 }
 func createCoreDumpDir(pipe_config *types.Pipeconfig, args types.Coredump_config) error {
+	if _, err := os.Stat(pipe_config.Storage); os.IsNotExist(err) {
+		// 目录不存在，创建目录
+		if err := os.MkdirAll(pipe_config.Storage, os.ModePerm); err != nil {
+			return err
+		}
+	}
 	pipe_config.Storage = fmt.Sprintf("%s/%s_%s_%d_coredump", pipe_config.Storage, args.Initial_ns_pid, args.Process_ns_pid, args.Timestamp)
 	dirName := pipe_config.Storage
 	if _, err := os.Stat(dirName); os.IsNotExist(err) {
@@ -140,6 +146,26 @@ func writeCoreDumpToFile(config types.Coredump_config) error {
 	io.Copy(file, reader)
 	return nil
 }
+func writeMiniDumpToFile(config types.Coredump_config) error {
+	filename := fmt.Sprintf("%s_%s_%d_minidump.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// 创建一个管道
+	reader, writer := io.Pipe()
+	// 将标准输入连接到管道的写入端
+	go func() {
+		defer writer.Close()
+		io.Copy(writer, os.Stdin)
+	}()
+
+	// 从管道的读取端将内容写入文件
+	io.Copy(file, reader)
+	return nil
+}
 func compress(config types.Coredump_config) error {
 	// Create a new zip archive.
 	filename := fmt.Sprintf("%s_%s_%d_coredump.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
@@ -158,7 +184,6 @@ func compress(config types.Coredump_config) error {
 		Name:   filename,
 		Method: zip.Deflate,
 	}
-
 	// Write the header to the zip file.
 	writer, err := zipwriter.CreateHeader(header)
 	if err != nil {
@@ -205,8 +230,12 @@ func main() {
 	}
 	//判断硬盘使用率
 	flag, err := isDiskSufficient(pipe_config)
-	if err != nil && !flag {
+	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
+		return
+	}
+	if !flag {
+		journal.Print(journal.PriErr, "Disk space exceeds limit")
 		return
 	}
 	//创建存储coredump内容文件夹

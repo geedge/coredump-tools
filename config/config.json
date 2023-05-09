@@ -1,1 +1,1 @@
-{"compress":false,"storage_type":1,"storage":"/var/tmp","total_file_mem_limit":"80%","containered_sock_path":"/run/k3s/containerd/containerd.sock"}
+{"compress":false,"storage_type":1,"storage":"/var/lib/coredump","total_file_mem_limit":"80%","containered_sock_path":"/run/k3s/containerd/containerd.sock"}

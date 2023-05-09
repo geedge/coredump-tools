@@ -3,19 +3,18 @@ package main
 import (
 	"context"
 	"coredump-tools/types"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/ssh/terminal"
+	"github.com/google/uuid"
+	"golang.org/x/term"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -34,7 +33,7 @@ func terminalSize() (width, height int, err error) {
 	}
 	defer file.Close()
 
-	width, height, err = terminal.GetSize(int(file.Fd()))
+	width, height, err = term.GetSize(int(file.Fd()))
 	if err != nil {
 		return 0, 0, err
 	}
@@ -42,51 +41,7 @@ func terminalSize() (width, height int, err error) {
 }
 func debug(config types.Coredump_config, command string) error {
 	// 使用kubectl命令执行debug操作
-	if config.Image_name != "" {
-		// // 定义要运行的 kubectl 命令
-		// command := "kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name} {end}'"
-
-		// // 在 shell 中运行 kubectl 命令并读取输出
-		// cmd := exec.Command("bash", "-c", command)
-		// output, err := cmd.Output()
-		// if err != nil {
-		// 	return err
-		// }
-
-		// // 将输出字符串按空格拆分为字符串切片
-		// nodes := strings.Split(strings.TrimSpace(string(output)), " ")
-		// if len(nodes) == 0 {
-		// 	return errors.New("the node list is empty")
-		// }
-		// if command == "gdb" {
-		// 	chmod := "cd" + filepath.Dir(config.Process_exe_path)
-		// 	cmd := exec.Command("kubectl", "debug", "node/"+nodes[0], "-it", "--image="+config.Image_id, "--image-pull-policy=Never", "--", "gdb", config.Process_exe_path, "/host"+config.Storage, "-ex", chmod)
-		// 	cmd.Stdin = os.Stdin
-		// 	cmd.Stdout = os.Stdout
-		// 	cmd.Stderr = os.Stderr
-		// 	fmt.Println(cmd.String())
-		// 	if err := cmd.Start(); err != nil {
-		// 		return err
-		// 	}
-		// 	err := cmd.Wait()
-		// 	if err != nil {
-		// 		return err
-		// 	}
-		// } else {
-		// 	cmd := exec.Command("kubectl", "debug", "node/"+config.Hostname, "-it", "--image="+config.Image_id, "--image-pull-policy=Never", "--", command)
-		// 	cmd.Stdin = os.Stdin
-		// 	cmd.Stdout = os.Stdout
-		// 	cmd.Stderr = os.Stderr
-		// 	fmt.Println(cmd.String())
-		// 	fmt.Println("exe=", config.Process_exe_path, "coredump=/host", config.Storage)
-		// 	if err := cmd.Start(); err != nil {
-		// 		return err
-		// 	}
-		// 	err := cmd.Wait()
-		// 	if err != nil {
-		// 		return err
-		// 	}
-		// }
+	if config.Image_name != "NULL" {
 		kubeconfig := os.Getenv("KUBECONFIG")
 		if kubeconfig == "" {
 			kubeconfig = os.Getenv("HOME") + "/.kube/config"
@@ -115,7 +70,7 @@ func debug(config types.Coredump_config, command string) error {
 		fmt.Printf("Deleted Pod %q.\n", podName)
 		return nil
 	} else { // 使用gdb命令进行命令行交互分析
-		cmd := exec.Command("gdb", config.Process_exe_path, config.Storage)
+		cmd := exec.Command("gdb", config.Process_exe_path, config.Storage, "-cd", filepath.Dir(config.Process_exe_path))
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -126,26 +81,11 @@ func debug(config types.Coredump_config, command string) error {
 	}
 	return nil
 }
-func generateRandomString(length int) (string, error) {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	bytes := make([]byte, length)
-	max := big.NewInt(int64(len(charset)))
-	for i := 0; i < length; i++ {
-		n, err := rand.Int(rand.Reader, max)
-		if err != nil {
-			return "", err
-		}
-		bytes[i] = charset[n.Int64()]
-	}
-	return string(bytes), nil
-}
 func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types.Coredump_config, command string) (string, error) {
 	// Define the Pod object
-	randword, err := generateRandomString(5)
-	if err != nil {
-		return "", err
-	}
-	podName := fmt.Sprintf("node-debug-%s-%d", randword, time.Now().Unix())
+	id := uuid.New()
+	fmt.Println(id.String())
+	podName := fmt.Sprintf("node-debug-%s", id.String())
 	containerName := "debug"
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -167,6 +107,14 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 							Name:      "host-dir",
 							MountPath: "/host",
 						},
+						{
+							Name:      "lib-debuginfo-dir",
+							MountPath: "/usr/lib/debug",
+						},
+						{
+							Name:      "src-debuginfo-dir",
+							MountPath: "/usr/src/debug",
+						},
 					},
 					SecurityContext: &v1.SecurityContext{
 						Privileged: &[]bool{true}[0],
@@ -179,6 +127,22 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: "/",
+						},
+					},
+				},
+				{
+					Name: "lib-debuginfo-dir",
+					VolumeSource: v1.VolumeSource{
+						HostPath: &v1.HostPathVolumeSource{
+							Path: "/usr/lib/debug",
+						},
+					},
+				},
+				{
+					Name: "src-debuginfo-dir",
+					VolumeSource: v1.VolumeSource{
+						HostPath: &v1.HostPathVolumeSource{
+							Path: "/usr/src/debug",
 						},
 					},
 				},
@@ -214,12 +178,16 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 	if !ready {
 		return podName, errors.New("create pod timeout")
 	}
-	// Exec into the container
+	// Disable canonical mode and enable echo mode.
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		return podName, err
+	}
+	defer term.Restore(int(os.Stdin.Fd()), oldState)
 	// Create exec request
 	var cmd []string
 	if command == "gdb" {
-		chmod := "cd" + filepath.Dir(config.Process_exe_path)
-		cmd = []string{"gdb", config.Process_exe_path, "/host" + config.Storage, "-ex", chmod}
+		cmd = []string{"gdb", config.Process_exe_path, "/host" + config.Storage, "-cd", filepath.Dir(config.Process_exe_path)}
 	} else {
 		cmd = []string{command}
 	}
@@ -316,6 +284,11 @@ func Help() {
 	fmt.Println("        Directory path")
 	fmt.Println("  -p string")
 	fmt.Println("        Pid to matching")
+	fmt.Println("debug options:")
+	fmt.Println("  -dir string")
+	fmt.Println("        Directory path")
+	fmt.Println("  -p string")
+	fmt.Println("        Pid to matching")
 	fmt.Println("  -command string")
 	fmt.Println("        exe command when attach to pod")
 }
@@ -331,7 +304,7 @@ func main() {
 	debugCmd.StringVar(&dirPath, "dir", "", "Directory path")
 	debugCmd.StringVar(&command, "command", "", "")
 	if len(os.Args) == 1 {
-		helpCmd.Usage()
+		Help()
 		os.Exit(1)
 	}
 	switch os.Args[1] {
@@ -348,7 +321,7 @@ func main() {
 	}
 	if listCmd.Parsed() {
 		if dirPath == "" {
-			dirPath = "/var/tmp"
+			dirPath = "/var/lib/coredump"
 		}
 		WalkDirectory(dirPath)
 		list(pid)
@@ -356,7 +329,7 @@ func main() {
 	}
 	if debugCmd.Parsed() {
 		if dirPath == "" {
-			dirPath = "/var/tmp"
+			dirPath = "/var/lib/coredump"
 		}
 		if command == "" {
 			command = "gdb"
