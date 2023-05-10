@@ -42,12 +42,12 @@ export GOPROXY=https://proxy.golang.com.cn,direct
 go env
 pwd
 ls
-mkdir -p /builds/linxin/coredump-tools/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+mkdir -p /builds/linxin/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 mv /builds/linxin/coredump-tools /builds/linxin/coredump-tools-${VERSION_ID}
-tar --warning=no-file-changed -czvf /builds/linxin/coredump-tools-${VERSION_ID}/rpmbuild/SOURCES/coredump-tools-${VERSION_ID}-${COMMIT_ID}.tar.gz /builds/linxin/coredump-tools-${VERSION_ID}
-cp /builds/linxin/coredump-tools-${VERSION_ID}/script/coredump.spec /builds/linxin/coredump-tools-${VERSION_ID}/rpmbuild/SPECS
-rpmbuild --define "_topdir `pwd`/rpmbuild" --define "_version ${VERSION_ID}" --define "_release ${COMMIT_ID}" --define "_commit ${COMMIT_ID}" -ba /builds/linxin/coredump-tools-${VERSION_ID}/rpmbuild/SPECS/coredump.spec
-cd /builds/linxin/coredump-tools-${VERSION_ID}/rpmbuild/RPMS/x86_64
+tar --warning=no-file-changed -czvf /builds/linxin/rpmbuild/SOURCES/coredump-tools-${VERSION_ID}-${COMMIT_ID}.tar.gz /builds/linxin/coredump-tools-${VERSION_ID}
+cp /builds/linxin/coredump-tools-${VERSION_ID}/script/coredump.spec /builds/linxin/rpmbuild/SPECS
+rpmbuild --define "_topdir `pwd`/rpmbuild" --define "_version ${VERSION_ID}" --define "_release ${COMMIT_ID}" --define "_commit ${COMMIT_ID}" -ba /builds/linxin/rpmbuild/SPECS/coredump.spec
+cd /builds/linxin/rpmbuild/RPMS/x86_64
 ls -halt ./*.rpm
 
 if [ -n "${UPLOAD}" ]; then	
