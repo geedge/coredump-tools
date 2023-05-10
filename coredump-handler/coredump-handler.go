@@ -10,58 +10,77 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/namespaces"
 	"github.com/coreos/go-systemd/v22/journal"
+	"github.com/shirou/gopsutil/disk"
 )
 
-const chunkSize = 1024 * 1024 * 1024 // 1GB
 var coredump_config types.Coredump_config
 
 func argsJudge() error {
-	if coredump_config.Initial_ns_pid == "" || coredump_config.Process_ns_pid == "" || coredump_config.Corepipe_config_path == "" || coredump_config.Timestamp == 0 || coredump_config.Process_exe_path == "" || coredump_config.GID == "" || coredump_config.Hostname == "" || coredump_config.UID == "" || coredump_config.Signal == -1 {
-		err := fmt.Sprintf("Failed to initialize command line parameters. -P=%s -p=%s -E=%s -configpath=%s -t=%d -g=%s -h=%s -s=%d -u=%s", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestamp, coredump_config.GID, coredump_config.Hostname, coredump_config.Signal, coredump_config.UID)
+
+	if coredump_config.Initial_ns_pid == "" ||
+		coredump_config.Process_ns_pid == "" ||
+		coredump_config.Corepipe_config_path == "" ||
+		coredump_config.Timestamp == 0 ||
+		coredump_config.Process_exe_path == "" ||
+		coredump_config.GID == "" ||
+		coredump_config.Hostname == "" ||
+		coredump_config.UID == "" ||
+		coredump_config.Signal == -1 {
+		err := fmt.Sprintf("Failed to initialize command line parameters. -P=%s -p=%s -E=%s -configpath=%s -t=%d -g=%s -h=%s -s=%d -u=%s",
+			coredump_config.Initial_ns_pid,
+			coredump_config.Process_ns_pid,
+			coredump_config.Process_exe_path,
+			coredump_config.Corepipe_config_path,
+			coredump_config.Timestamp,
+			coredump_config.GID,
+			coredump_config.Hostname,
+			coredump_config.Signal,
+			coredump_config.UID)
 		return errors.New(err)
 	}
 	return nil
 }
+
 func isDiskSufficient(pipe_config types.Pipeconfig) (bool, error) {
-	percent, err := strconv.ParseFloat(pipe_config.Total_file_mem_limit[:len(pipe_config.Total_file_mem_limit)-1], 64)
+	percent, err := strconv.ParseInt(pipe_config.Total_file_mem_limit[:len(pipe_config.Total_file_mem_limit)-1], 10, 32)
 	if err != nil {
 		return false, err
 	}
-	percent = percent / 100.0
-	var stat syscall.Statfs_t
-	wd, err := syscall.Getwd()
+	// var stat syscall.Statfs_t
+	wd := pipe_config.Storage
 	if err != nil {
 		fmt.Println(err)
 		return false, err
 	}
-	syscall.Statfs(wd, &stat)
-	// 剩余空间的大小为块的数量 * 每个块的大小
-	// stat.Bfree表示可用的块的数量，stat.Bsize表示每个块的大小
-	usedSpace := (int64(stat.Blocks) - int64(stat.Bfree))
-	totalSpace := int64(stat.Blocks)
-	usage := float64(usedSpace) / float64(totalSpace)
+	diskinfo, err := disk.Usage(wd)
+	if err != nil {
+		return false, err
+	}
+	data, err := json.MarshalIndent(diskinfo, "", "  ")
+	if err != nil {
+		info := fmt.Sprintf("diskinfo:%s", string(data))
+		journal.Print(journal.PriInfo, info)
+	}
+	usage := int64(math.Floor(diskinfo.UsedPercent + 0.5))
+	info := fmt.Sprintf("usage:%d,limited:%d", usage, percent)
+	journal.Print(journal.PriInfo, info)
 	if usage >= percent {
 		return false, nil
 	}
 	return true, nil
 }
+
 func createCoreDumpDir(pipe_config *types.Pipeconfig, args types.Coredump_config) error {
-	if _, err := os.Stat(pipe_config.Storage); os.IsNotExist(err) {
-		// 目录不存在，创建目录
-		if err := os.MkdirAll(pipe_config.Storage, os.ModePerm); err != nil {
-			return err
-		}
-	}
-	pipe_config.Storage = fmt.Sprintf("%s/%s_%s_%d_coredump", pipe_config.Storage, args.Initial_ns_pid, args.Process_ns_pid, args.Timestamp)
+	pipe_config.Storage = fmt.Sprintf("%s/coredump_%s_%s_%d", pipe_config.Storage, args.Initial_ns_pid, args.Process_ns_pid, args.Timestamp)
 	dirName := pipe_config.Storage
 	if _, err := os.Stat(dirName); os.IsNotExist(err) {
 		// 目录不存在，创建目录
@@ -114,7 +133,7 @@ func getImageName(container_id string, sock_path string) (string, error) {
 	return imageRef.Name(), nil
 }
 func writeCoreConfig(config types.Coredump_config) error {
-	filename := fmt.Sprintf("%s_%s_%d_coredump.config", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
+	filename := fmt.Sprintf("%s_%s_%d.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -127,7 +146,7 @@ func writeCoreConfig(config types.Coredump_config) error {
 	return nil
 }
 func writeCoreDumpToFile(config types.Coredump_config) error {
-	filename := fmt.Sprintf("%s_%s_%d_coredump.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
+	filename := fmt.Sprintf("%s_%s_%d.coredump", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -147,7 +166,7 @@ func writeCoreDumpToFile(config types.Coredump_config) error {
 	return nil
 }
 func writeMiniDumpToFile(config types.Coredump_config) error {
-	filename := fmt.Sprintf("%s_%s_%d_minidump.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
+	filename := fmt.Sprintf("%s_%s_%d.minidump", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -168,7 +187,7 @@ func writeMiniDumpToFile(config types.Coredump_config) error {
 }
 func compress(config types.Coredump_config) error {
 	// Create a new zip archive.
-	filename := fmt.Sprintf("%s_%s_%d_coredump.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
+	filename := fmt.Sprintf("%s_%s_%d.coredump", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
 	zipfile, err := os.Create(filename + ".zip")
 	if err != nil {
 		return err
@@ -228,6 +247,14 @@ func main() {
 	if pipe_config.Storage_type == 0 {
 		return
 	}
+	//生成coredump存放文件夹
+	if _, err := os.Stat(pipe_config.Storage); os.IsNotExist(err) {
+		// 目录不存在，创建目录
+		if err := os.MkdirAll(pipe_config.Storage, os.ModePerm); err != nil {
+			journal.Print(journal.PriErr, err.Error())
+			return
+		}
+	}
 	//判断硬盘使用率
 	flag, err := isDiskSufficient(pipe_config)
 	if err != nil {
@@ -269,13 +296,13 @@ func main() {
 		if err != nil {
 			journal.Print(journal.PriErr, err.Error())
 		}
-		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d_coredump.info", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
-	} else if pipe_config.Compress == true {
+		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d.coredump", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
+	} else {
 		err = compress(coredump_config)
 		if err != nil {
 			journal.Print(journal.PriErr, err.Error())
 		}
-		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d_coredump.info.zip", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
+		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d.coredump.zip", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
 	}
 	//将image name写入coredump config
 	err = writeCoreConfig(coredump_config)

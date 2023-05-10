@@ -5,7 +5,6 @@ import (
 	"coredump-tools/types"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/urfave/cli/v2"
 	"golang.org/x/term"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -115,6 +115,10 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 							Name:      "src-debuginfo-dir",
 							MountPath: "/usr/src/debug",
 						},
+						{
+							Name:      "mrzcpd",
+							MountPath: "/opt/tsg/mrzcpd",
+						},
 					},
 					SecurityContext: &v1.SecurityContext{
 						Privileged: &[]bool{true}[0],
@@ -143,6 +147,14 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: "/usr/src/debug",
+						},
+					},
+				},
+				{
+					Name: "mrzcpd",
+					VolumeSource: v1.VolumeSource{
+						HostPath: &v1.HostPathVolumeSource{
+							Path: "/opt/tsg/mrzcpd",
 						},
 					},
 				},
@@ -230,7 +242,7 @@ func WalkDirectory(dir string) {
 		}
 
 		if !info.IsDir() {
-			if strings.HasSuffix(info.Name(), ".config") {
+			if strings.HasSuffix(info.Name(), ".info") {
 				data, err := os.ReadFile(path)
 				if err != nil {
 					return err
@@ -276,76 +288,111 @@ func list(pid string) {
 	fmt.Println("Total", total, "coredumps")
 }
 
-// Help 打印使用帮助
-func Help() {
-	fmt.Println("Usage: coredump-ctl [list | debug | help] [options] ")
-	fmt.Println("list options:")
-	fmt.Println("  -dir string")
-	fmt.Println("        Directory path")
-	fmt.Println("  -p string")
-	fmt.Println("        Pid to matching")
-	fmt.Println("debug options:")
-	fmt.Println("  -dir string")
-	fmt.Println("        Directory path")
-	fmt.Println("  -p string")
-	fmt.Println("        Pid to matching")
-	fmt.Println("  -command string")
-	fmt.Println("        exe command when attach to pod")
-}
+// // Help 打印使用帮助
+// func Help() {
+// 	fmt.Println("Usage: coredump-ctl [list | debug | help] [options] ")
+// 	fmt.Println("list options:")
+// 	fmt.Println("  -dir string")
+// 	fmt.Println("        Directory path")
+// 	fmt.Println("  -p string")
+// 	fmt.Println("        Pid to matching")
+// 	fmt.Println("debug options:")
+// 	fmt.Println("  -dir string")
+// 	fmt.Println("        Directory path")
+// 	fmt.Println("  -p string")
+// 	fmt.Println("        Pid to matching")
+// 	fmt.Println("  -command string")
+// 	fmt.Println("        exe command when attach to pod")
+// }
 
 func main() {
-	listCmd := flag.NewFlagSet("list", flag.ExitOnError)
-	debugCmd := flag.NewFlagSet("debug", flag.ExitOnError)
-	helpCmd := flag.NewFlagSet("help", flag.ExitOnError)
-	var dirPath, pid, command string
-	listCmd.StringVar(&pid, "p", "", "Pid to matching")
-	debugCmd.StringVar(&pid, "p", "", "Pid to matching")
-	listCmd.StringVar(&dirPath, "dir", "", "Directory path")
-	debugCmd.StringVar(&dirPath, "dir", "", "Directory path")
-	debugCmd.StringVar(&command, "command", "", "")
-	if len(os.Args) == 1 {
-		Help()
-		os.Exit(1)
+	var (
+		pid     string
+		dirPath string
+		command string
+	)
+	app := &cli.App{
+		Name:  "coredump",
+		Usage: "Manage coredump files in Kubernetes clusters",
+		Commands: []*cli.Command{
+			{
+				Name:    "list",
+				Aliases: []string{"ls"},
+				Usage:   "List all coredump files",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "pid",
+						Aliases:     []string{"p"},
+						Usage:       "Pid to match",
+						Value:       "",
+						Destination: &pid,
+					},
+					&cli.StringFlag{
+						Name:        "dir",
+						Usage:       "Directory path",
+						Value:       "/var/lib/coredump",
+						Destination: &dirPath,
+					},
+				},
+				Action: func(c *cli.Context) error {
+					fmt.Println(dirPath)
+					WalkDirectory(dirPath)
+					list(pid)
+					return nil
+				},
+			},
+			{
+				Name:  "debug",
+				Usage: "Start a debugging session for a coredump",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "pid",
+						Aliases:     []string{"p"},
+						Usage:       "Pid to match",
+						Value:       "",
+						Destination: &pid,
+					},
+					&cli.StringFlag{
+						Name:        "dir",
+						Usage:       "Directory path",
+						Value:       "/var/lib/coredump",
+						Destination: &dirPath,
+					},
+					&cli.StringFlag{
+						Name:        "command",
+						Usage:       "Debugger command (default: gdb)",
+						Value:       "gdb",
+						Destination: &command,
+					},
+				},
+				Action: func(c *cli.Context) error {
+					WalkDirectory(dirPath)
+					for _, config := range configs {
+						if strings.Compare(config.Initial_ns_pid, pid) == 0 || pid == "" {
+							err := debug(config, command)
+							if err != nil {
+								fmt.Println(err)
+							} else {
+								break
+							}
+						}
+					}
+					return nil
+				},
+			},
+			{
+				Name:  "help",
+				Usage: "Show help message",
+				Action: func(c *cli.Context) error {
+					cli.ShowAppHelp(c)
+					return nil
+				},
+			},
+		},
 	}
-	switch os.Args[1] {
-	case "list":
-		listCmd.Parse(os.Args[2:])
-	case "debug":
-		debugCmd.Parse(os.Args[2:])
-	case "help":
-		helpCmd.Parse(os.Args[2:])
-		Help()
-	default:
-		fmt.Printf("%q is not a valid command.\n", os.Args[1])
-		os.Exit(1)
-	}
-	if listCmd.Parsed() {
-		if dirPath == "" {
-			dirPath = "/var/lib/coredump"
-		}
-		WalkDirectory(dirPath)
-		list(pid)
-		return
-	}
-	if debugCmd.Parsed() {
-		if dirPath == "" {
-			dirPath = "/var/lib/coredump"
-		}
-		if command == "" {
-			command = "gdb"
-		}
-		WalkDirectory(dirPath)
-		for _, config := range configs {
-			fmt.Println(config)
-			if strings.Compare(config.Initial_ns_pid, pid) == 0 || pid == "" {
-				err := debug(config, command)
-				if err != nil {
-					fmt.Println(err)
-				} else {
-					break
-				}
-			}
-		}
-		return
+
+	err := app.Run(os.Args)
+	if err != nil {
+		fmt.Println(err)
 	}
 }
