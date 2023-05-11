@@ -355,7 +355,6 @@ func main() {
 					},
 				},
 				Action: func(c *cli.Context) error {
-					fmt.Println(dirPath)
 					WalkDirectory(dirPath)
 					list(pid)
 					return nil
