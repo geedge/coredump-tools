@@ -44,7 +44,7 @@ pwd
 ls
 mkdir -p /builds/linxin/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 mv /builds/linxin/coredump-tools /builds/linxin/coredump-tools-${VERSION_ID}
-tar --warning=no-file-changed -czvf /builds/linxin/rpmbuild/SOURCES/coredump-tools-${VERSION_ID}-${COMMIT_ID}.tar.gz /builds/linxin/coredump-tools-${VERSION_ID}
+tar --warning=no-file-changed -czvf /builds/linxin/rpmbuild/SOURCES/coredump-tools-${VERSION_ID}-${COMMIT_ID}.tar.gz ../coredump-tools-${VERSION_ID}
 cp /builds/linxin/coredump-tools-${VERSION_ID}/script/coredump.spec /builds/linxin/rpmbuild/SPECS
 cd  /builds/linxin
 rpmbuild --define "_topdir `pwd`/rpmbuild" --define "_version ${VERSION_ID}" --define "_release ${COMMIT_ID}" --define "_commit ${COMMIT_ID}" -ba /builds/linxin/rpmbuild/SPECS/coredump.spec
