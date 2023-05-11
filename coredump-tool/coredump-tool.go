@@ -9,9 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/alexeyco/simpletable"
 	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/term"
@@ -265,14 +267,21 @@ func WalkDirectory(dir string) {
 	}
 }
 func list(pid string) {
-	defaultWidth := 80
-	if width, _, err := terminalSize(); err == nil {
-		defaultWidth = int(width)
+	table := simpletable.New()
+
+	table.Header = &simpletable.Header{
+		Cells: []*simpletable.Cell{
+			{Text: "PID"},
+			{Text: "UID"},
+			{Text: "GID"},
+			{Text: "SIG"},
+			{Text: "EXE"},
+			{Text: "IMAGE"},
+			{Text: "HOSTNAME"},
+			{Text: "STORAGE"},
+			{Text: "TIMESTAMP"},
+		},
 	}
-	// 输出表头信息
-	fmt.Printf("%-8s %-3s %-3s %-3s %-20s %-30s %-30s %-100s %-50s\n",
-		"PID", "UID", "GID", "SIG", "TIMESTAMP", "EXE", "HOSTNAME", "IMAGE", "STORGE")
-	fmt.Println(strings.Repeat("-", defaultWidth))
 	total := 0
 	// 输出配置信息
 	for _, c := range configs {
@@ -280,11 +289,21 @@ func list(pid string) {
 			continue
 		}
 		coreTime := time.Unix(c.Timestamp, 0).Format("2006-01-02 15:04:05")
-		fmt.Printf("%-8s %-3s %-3s %-6d %-20s %-30s %-30s %-100s %-50s\n",
-			c.Initial_ns_pid, c.UID, c.GID, c.Signal, coreTime, c.Process_exe_path, c.Hostname, c.Image_name, c.Storage)
+		r := []*simpletable.Cell{
+			{Text: c.Initial_ns_pid},
+			{Text: c.UID},
+			{Text: c.GID},
+			{Text: strconv.Itoa(c.Signal)},
+			{Text: c.Process_exe_path},
+			{Text: c.Image_name},
+			{Text: c.Hostname},
+			{Text: c.Storage},
+			{Text: coreTime},
+		}
+		table.Body.Cells = append(table.Body.Cells, r)
 		total += 1
 	}
-	fmt.Println()
+	fmt.Println(table.String())
 	fmt.Println("Total", total, "coredumps")
 }
 
@@ -329,7 +348,8 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:        "dir",
-						Usage:       "Directory path",
+						Aliases:     []string{"d"},
+						Usage:       "Coredump directory path(default: /var/lib/coredump)",
 						Value:       "/var/lib/coredump",
 						Destination: &dirPath,
 					},
@@ -354,7 +374,8 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:        "dir",
-						Usage:       "Directory path",
+						Aliases:     []string{"d"},
+						Usage:       "Coredump directory path(default: /var/lib/coredump)",
 						Value:       "/var/lib/coredump",
 						Destination: &dirPath,
 					},

@@ -26,3 +26,14 @@ type Coredump_config struct {
 	Hostname             string
 	Storage              string
 }
+type Coredump_cli_table struct {
+	PID       string
+	UID       string
+	GID       string
+	SIG       int
+	EXE       string
+	IMAGE     string
+	HOSTNAME  string
+	STORAGE   string
+	TIMESTAMP string
+}
