@@ -125,6 +125,7 @@ func getImageName(container_id string, sock_path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// container_info,err:=container.Info(ctx)
 	// 获取容器关联的镜像信息
 	imageRef, err := container.Image(ctx)
 	if err != nil {
@@ -282,10 +283,14 @@ func main() {
 	container_id, err := getContainerId(coredump_config.Initial_ns_pid)
 	//根据查找到的container id查找对应的image name
 	if err == nil && len(container_id) != 0 {
+		coredump_config.Container_id = container_id
 		coredump_config.Image_name, err = getImageName(container_id, pipe_config.Containered_sock_path)
 		if err != nil {
 			journal.Print(journal.PriInfo, err.Error())
 		}
+	}
+	if coredump_config.Container_id == "" {
+		coredump_config.Container_id = "NULL"
 	}
 	if coredump_config.Image_name == "" {
 		coredump_config.Image_name = "NULL"

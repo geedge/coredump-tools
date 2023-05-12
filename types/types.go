@@ -19,6 +19,7 @@ type Coredump_config struct {
 	Process_exe_path     string
 	Timestamp            int64
 	Corepipe_config_path string `json:"-"`
+	Container_id         string
 	Image_name           string
 	UID                  string
 	GID                  string
@@ -32,6 +33,7 @@ type Coredump_cli_table struct {
 	GID       string
 	SIG       int
 	EXE       string
+	CONTAINER string
 	IMAGE     string
 	HOSTNAME  string
 	STORAGE   string

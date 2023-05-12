@@ -28,19 +28,128 @@ import (
 
 var configs []types.Coredump_config
 
-func terminalSize() (width, height int, err error) {
-	file, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
-	if err != nil {
-		return 0, 0, err
-	}
-	defer file.Close()
+// WalkDirectory 遍历文件目录并处理后缀名为.config的文件
 
-	width, height, err = term.GetSize(int(file.Fd()))
+func WalkDirectory(dir string) {
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() && strings.HasPrefix(info.Name(), "coredump_") {
+			err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+
+				if !info.IsDir() && strings.HasSuffix(info.Name(), ".info") {
+					data, err := os.ReadFile(path)
+					if err != nil {
+						return err
+					}
+
+					var config types.Coredump_config
+					err = json.Unmarshal(data, &config)
+					if err != nil {
+						return err
+					}
+					if config.Container_id == "" {
+						config.Container_id = "NULL"
+					}
+					if config.Image_name == "" {
+						config.Image_name = "NULL"
+					}
+					configs = append(configs, config)
+				}
+
+				return nil
+			})
+
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		return 0, 0, err
+		fmt.Printf("Error walking directory %s: %v\n", dir, err)
 	}
-	return width, height, nil
 }
+
+// func WalkDirectory(dir string) {
+// 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+// 		if err != nil {
+// 			return err
+// 		}
+
+// 		if !info.IsDir() {
+// 			if strings.HasSuffix(info.Name(), ".info") {
+// 				data, err := os.ReadFile(path)
+// 				if err != nil {
+// 					return err
+// 				}
+
+// 				var config types.Coredump_config
+// 				err = json.Unmarshal(data, &config)
+// 				if err != nil {
+// 					return err
+// 				}
+// 				configs = append(configs, config)
+// 			}
+// 		}
+
+// 		return nil
+// 	})
+
+//		if err != nil {
+//			fmt.Printf("Error walking directory %s: %v\n", dir, err)
+//		}
+//	}
+func list(pid string) {
+	table := simpletable.New()
+
+	table.Header = &simpletable.Header{
+		Cells: []*simpletable.Cell{
+			{Text: "PID"},
+			{Text: "UID"},
+			{Text: "GID"},
+			{Text: "SIG"},
+			{Text: "EXE"},
+			{Text: "CONTAINER"},
+			{Text: "IMAGE"},
+			{Text: "HOSTNAME"},
+			{Text: "STORAGE"},
+			{Text: "TIMESTAMP"},
+		},
+	}
+	total := 0
+	// 输出配置信息
+	for _, c := range configs {
+		if pid != "" && strings.Compare(c.Initial_ns_pid, pid) != 0 {
+			continue
+		}
+		coreTime := time.Unix(c.Timestamp, 0).Format("2006-01-02 15:04:05")
+		r := []*simpletable.Cell{
+			{Text: c.Initial_ns_pid},
+			{Text: c.UID},
+			{Text: c.GID},
+			{Text: strconv.Itoa(c.Signal)},
+			{Text: c.Process_exe_path},
+			{Text: c.Container_id},
+			{Text: c.Image_name},
+			{Text: c.Hostname},
+			{Text: c.Storage},
+			{Text: coreTime},
+		}
+		table.Body.Cells = append(table.Body.Cells, r)
+		total += 1
+	}
+	fmt.Println(table.String())
+	fmt.Println("Total", total, "coredumps")
+}
+
 func debug(config types.Coredump_config, command string) error {
 	// 使用kubectl命令执行debug操作
 	if config.Image_name != "NULL" {
@@ -235,94 +344,6 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 	}
 	return podName, nil
 }
-
-// WalkDirectory 遍历文件目录并处理后缀名为.config的文件
-func WalkDirectory(dir string) {
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if !info.IsDir() {
-			if strings.HasSuffix(info.Name(), ".info") {
-				data, err := os.ReadFile(path)
-				if err != nil {
-					return err
-				}
-
-				var config types.Coredump_config
-				err = json.Unmarshal(data, &config)
-				if err != nil {
-					return err
-				}
-				configs = append(configs, config)
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		fmt.Printf("Error walking directory %s: %v\n", dir, err)
-	}
-}
-func list(pid string) {
-	table := simpletable.New()
-
-	table.Header = &simpletable.Header{
-		Cells: []*simpletable.Cell{
-			{Text: "PID"},
-			{Text: "UID"},
-			{Text: "GID"},
-			{Text: "SIG"},
-			{Text: "EXE"},
-			{Text: "IMAGE"},
-			{Text: "HOSTNAME"},
-			{Text: "STORAGE"},
-			{Text: "TIMESTAMP"},
-		},
-	}
-	total := 0
-	// 输出配置信息
-	for _, c := range configs {
-		if pid != "" && strings.Compare(c.Initial_ns_pid, pid) != 0 {
-			continue
-		}
-		coreTime := time.Unix(c.Timestamp, 0).Format("2006-01-02 15:04:05")
-		r := []*simpletable.Cell{
-			{Text: c.Initial_ns_pid},
-			{Text: c.UID},
-			{Text: c.GID},
-			{Text: strconv.Itoa(c.Signal)},
-			{Text: c.Process_exe_path},
-			{Text: c.Image_name},
-			{Text: c.Hostname},
-			{Text: c.Storage},
-			{Text: coreTime},
-		}
-		table.Body.Cells = append(table.Body.Cells, r)
-		total += 1
-	}
-	fmt.Println(table.String())
-	fmt.Println("Total", total, "coredumps")
-}
-
-// // Help 打印使用帮助
-// func Help() {
-// 	fmt.Println("Usage: coredump-ctl [list | debug | help] [options] ")
-// 	fmt.Println("list options:")
-// 	fmt.Println("  -dir string")
-// 	fmt.Println("        Directory path")
-// 	fmt.Println("  -p string")
-// 	fmt.Println("        Pid to matching")
-// 	fmt.Println("debug options:")
-// 	fmt.Println("  -dir string")
-// 	fmt.Println("        Directory path")
-// 	fmt.Println("  -p string")
-// 	fmt.Println("        Pid to matching")
-// 	fmt.Println("  -command string")
-// 	fmt.Println("        exe command when attach to pod")
-// }
 
 func main() {
 	var (
