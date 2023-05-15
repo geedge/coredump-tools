@@ -50,12 +50,12 @@ func argsJudge() error {
 	return nil
 }
 
+// judge disk's space is sufficient or not
 func isDiskSufficient(pipe_config types.Pipeconfig) (bool, error) {
 	percent, err := strconv.ParseInt(pipe_config.Total_file_mem_limit[:len(pipe_config.Total_file_mem_limit)-1], 10, 32)
 	if err != nil {
 		return false, err
 	}
-	// var stat syscall.Statfs_t
 	wd := pipe_config.Storage
 	if err != nil {
 		fmt.Println(err)
@@ -79,11 +79,11 @@ func isDiskSufficient(pipe_config types.Pipeconfig) (bool, error) {
 	return true, nil
 }
 
+// create dir to storage coredump file and coredump info
 func createCoreDumpDir(pipe_config *types.Pipeconfig, args types.Coredump_config) error {
 	pipe_config.Storage = fmt.Sprintf("%s/coredump_%s_%s_%d", pipe_config.Storage, args.Initial_ns_pid, args.Process_ns_pid, args.Timestamp)
 	dirName := pipe_config.Storage
 	if _, err := os.Stat(dirName); os.IsNotExist(err) {
-		// 目录不存在，创建目录
 		if err := os.MkdirAll(dirName, os.ModePerm); err != nil {
 			return err
 		}
@@ -92,12 +92,16 @@ func createCoreDumpDir(pipe_config *types.Pipeconfig, args types.Coredump_config
 	}
 	return nil
 }
+
+// chmod to storage dir
 func changeDirectory(dir string) error {
 	if err := os.Chdir(dir); err != nil {
 		return err
 	}
 	return nil
 }
+
+// get container id by search /proc dir
 func getContainerId(pid string) (string, error) {
 	cgroup_path := fmt.Sprintf("/proc/%s/cgroup", pid)
 	content, err := os.ReadFile(cgroup_path)
@@ -112,27 +116,29 @@ func getContainerId(pid string) (string, error) {
 	containerID := match[1]
 	return containerID, nil
 }
+
+// get image name by container id
 func getImageName(container_id string, sock_path string) (string, error) {
-	// 连接 containerd daemon
+	// connect to containerd daemon
 	client, err := containerd.New(sock_path)
 	if err != nil {
 		return "", err
 	}
 	defer client.Close()
-	// 根据容器 ID 获取容器信息
+	// according to container id to get container info
 	ctx := namespaces.WithNamespace(context.Background(), "k8s.io")
 	container, err := client.LoadContainer(ctx, container_id)
 	if err != nil {
 		return "", err
 	}
-	// container_info,err:=container.Info(ctx)
-	// 获取容器关联的镜像信息
 	imageRef, err := container.Image(ctx)
 	if err != nil {
 		return "", err
 	}
 	return imageRef.Name(), nil
 }
+
+// write coredump info to file
 func writeCoreConfig(config types.Coredump_config) error {
 	filename := fmt.Sprintf("%s_%s_%d.info", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
 	file, err := os.Create(filename)
@@ -146,6 +152,8 @@ func writeCoreConfig(config types.Coredump_config) error {
 	}
 	return nil
 }
+
+// write coredump to file
 func writeCoreDumpToFile(config types.Coredump_config) error {
 	filename := fmt.Sprintf("%s_%s_%d.coredump", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
 	file, err := os.Create(filename)
@@ -154,15 +162,13 @@ func writeCoreDumpToFile(config types.Coredump_config) error {
 	}
 	defer file.Close()
 
-	// 创建一个管道
+	// create a pipe to write file
 	reader, writer := io.Pipe()
-	// 将标准输入连接到管道的写入端
 	go func() {
 		defer writer.Close()
 		io.Copy(writer, os.Stdin)
 	}()
 
-	// 从管道的读取端将内容写入文件
 	io.Copy(file, reader)
 	return nil
 }
@@ -174,15 +180,12 @@ func writeMiniDumpToFile(config types.Coredump_config) error {
 	}
 	defer file.Close()
 
-	// 创建一个管道
 	reader, writer := io.Pipe()
-	// 将标准输入连接到管道的写入端
 	go func() {
 		defer writer.Close()
 		io.Copy(writer, os.Stdin)
 	}()
 
-	// 从管道的读取端将内容写入文件
 	io.Copy(file, reader)
 	return nil
 }
@@ -233,13 +236,13 @@ func main() {
 	info = fmt.Sprintf("initialize command line parameters. -P=%s -p=%s -E=%s -C=%s -t=%d -g=%s -h=%s -s=%d -u=%s", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestamp, coredump_config.GID, coredump_config.Hostname, coredump_config.Signal, coredump_config.UID)
 	journal.Print(journal.PriInfo, info)
 	coredump_config.Process_exe_path = strings.Replace(coredump_config.Process_exe_path, "!", "/", -1)
-	//判断参数读取是否正确
+	//Judge agrs is correct or not.
 	err = argsJudge()
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
 		return
 	}
-	//读取config文件并初始化
+	//read config file and judge config info is correct or not.
 	pipe_config, err := config.PipeInit(coredump_config.Corepipe_config_path)
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
@@ -248,15 +251,14 @@ func main() {
 	if pipe_config.Storage_type == 0 {
 		return
 	}
-	//生成coredump存放文件夹
+	//create source dir
 	if _, err := os.Stat(pipe_config.Storage); os.IsNotExist(err) {
-		// 目录不存在，创建目录
 		if err := os.MkdirAll(pipe_config.Storage, os.ModePerm); err != nil {
 			journal.Print(journal.PriErr, err.Error())
 			return
 		}
 	}
-	//判断硬盘使用率
+	//judge disk usage
 	flag, err := isDiskSufficient(pipe_config)
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
@@ -266,22 +268,22 @@ func main() {
 		journal.Print(journal.PriErr, "Disk space exceeds limit")
 		return
 	}
-	//创建存储coredump内容文件夹
+	//create dir to storage coredump
 	err = createCoreDumpDir(&pipe_config, coredump_config)
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
 		return
 	}
 	coredump_config.Storage = pipe_config.Storage
-	//切换至存储coredump目录
+	//chmod to coredump dir
 	err = changeDirectory(pipe_config.Storage)
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
 		return
 	}
-	//查找发生coredump进程对应的container id
+	//find coredump process's container id
 	container_id, err := getContainerId(coredump_config.Initial_ns_pid)
-	//根据查找到的container id查找对应的image name
+	//find image name
 	if err == nil && len(container_id) != 0 {
 		coredump_config.Container_id = container_id
 		coredump_config.Image_name, err = getImageName(container_id, pipe_config.Containered_sock_path)
@@ -295,7 +297,7 @@ func main() {
 	if coredump_config.Image_name == "" {
 		coredump_config.Image_name = "NULL"
 	}
-	//根据配置项选择存储coredump文件方式
+	//write coredump file
 	if pipe_config.Compress == false {
 		err = writeCoreDumpToFile(coredump_config)
 		if err != nil {
@@ -309,7 +311,7 @@ func main() {
 		}
 		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d.coredump.zip", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
 	}
-	//将image name写入coredump config
+	//write coredump info
 	err = writeCoreConfig(coredump_config)
 	if err != nil {
 		journal.Print(journal.PriInfo, err.Error())

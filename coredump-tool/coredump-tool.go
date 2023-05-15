@@ -28,7 +28,7 @@ import (
 
 var configs []types.Coredump_config
 
-// WalkDirectory 遍历文件目录并处理后缀名为.config的文件
+// WalkDirectory search file with suffix name ".info"
 
 func WalkDirectory(dir string) {
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -77,36 +77,6 @@ func WalkDirectory(dir string) {
 		fmt.Printf("Error walking directory %s: %v\n", dir, err)
 	}
 }
-
-// func WalkDirectory(dir string) {
-// 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-// 		if err != nil {
-// 			return err
-// 		}
-
-// 		if !info.IsDir() {
-// 			if strings.HasSuffix(info.Name(), ".info") {
-// 				data, err := os.ReadFile(path)
-// 				if err != nil {
-// 					return err
-// 				}
-
-// 				var config types.Coredump_config
-// 				err = json.Unmarshal(data, &config)
-// 				if err != nil {
-// 					return err
-// 				}
-// 				configs = append(configs, config)
-// 			}
-// 		}
-
-// 		return nil
-// 	})
-
-//		if err != nil {
-//			fmt.Printf("Error walking directory %s: %v\n", dir, err)
-//		}
-//	}
 func list(pid string) {
 	table := simpletable.New()
 
@@ -125,7 +95,7 @@ func list(pid string) {
 		},
 	}
 	total := 0
-	// 输出配置信息
+	// output the config's info
 	for _, c := range configs {
 		if pid != "" && strings.Compare(c.Initial_ns_pid, pid) != 0 {
 			continue
@@ -151,7 +121,7 @@ func list(pid string) {
 }
 
 func debug(config types.Coredump_config, command string) error {
-	// 使用kubectl命令执行debug操作
+	// using kubectl to create a pod
 	if config.Image_name != "NULL" {
 		kubeconfig := os.Getenv("KUBECONFIG")
 		if kubeconfig == "" {
@@ -180,7 +150,7 @@ func debug(config types.Coredump_config, command string) error {
 		}
 		fmt.Printf("Deleted Pod %q.\n", podName)
 		return nil
-	} else { // 使用gdb命令进行命令行交互分析
+	} else { // using gdb to debug the coredump file
 		cmd := exec.Command("gdb", config.Process_exe_path, config.Storage, "-cd", filepath.Dir(config.Process_exe_path))
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
