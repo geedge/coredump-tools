@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -173,20 +174,15 @@ func writeCoreDumpToFile(config types.Coredump_config) error {
 	return nil
 }
 func writeMiniDumpToFile(config types.Coredump_config) error {
-	filename := fmt.Sprintf("%s_%s_%d.minidump", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
-	file, err := os.Create(filename)
+	filename := fmt.Sprintf("%s/%s_%s_%d.minidump", config.Storage, config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
+	cmd := exec.Command("/opt/tsg/coredump/bin/core_handler", config.Initial_ns_pid, filename)
+	cmd.Stdin = os.Stdin
+	// 获取 Python 脚本的输出
+	output, err := cmd.Output()
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-
-	reader, writer := io.Pipe()
-	go func() {
-		defer writer.Close()
-		io.Copy(writer, os.Stdin)
-	}()
-
-	io.Copy(file, reader)
+	fmt.Println(string(output))
 	return nil
 }
 func compress(config types.Coredump_config) error {
@@ -223,7 +219,7 @@ func main() {
 	flag.StringVar(&coredump_config.Process_ns_pid, "p", "", "process ns pid")
 	flag.StringVar(&coredump_config.Process_exe_path, "E", "", "pathname of executable process")
 	flag.StringVar(&coredump_config.Corepipe_config_path, "C", "", "configfile's path")
-	flag.Int64Var(&coredump_config.Timestamp, "t", 0, "the time of coredump")
+	flag.Int64Var(&coredump_config.Timestamp, "t", 0, "the time of `coredump")
 	flag.StringVar(&coredump_config.GID, "g", "", "Numeric real GID of dumped process.")
 	flag.IntVar(&coredump_config.Signal, "s", -1, "Number of signal causing dump")
 	flag.StringVar(&coredump_config.UID, "u", "", "Numeric real UID of dumped process.")
@@ -298,12 +294,20 @@ func main() {
 		coredump_config.Image_name = "NULL"
 	}
 	//write coredump file
-	if pipe_config.Compress == false {
-		err = writeCoreDumpToFile(coredump_config)
-		if err != nil {
-			journal.Print(journal.PriErr, err.Error())
+	if !pipe_config.Compress {
+		if pipe_config.Storage_type == 1 {
+			err = writeCoreDumpToFile(coredump_config)
+			if err != nil {
+				journal.Print(journal.PriErr, err.Error())
+			}
+			coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d.coredump", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
+		} else if pipe_config.Storage_type == 2 {
+			err = writeMiniDumpToFile(coredump_config)
+			if err != nil {
+				journal.Print(journal.PriErr, err.Error())
+			}
+			coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d.minidump", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
 		}
-		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d.coredump", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
 	} else {
 		err = compress(coredump_config)
 		if err != nil {

@@ -32,6 +32,8 @@ mkdir -p %{buildroot}/etc/profile.d
 mkdir -p %{buildroot}/usr/lib/tmpfiles.d
 mkdir -p %{buildroot}/usr/lib/sysctl.d
 cp ./coredump-handler/coredump-handler %{buildroot}/opt/tsg/coredump/bin
+chmod +x ./coredump-handler/core-handler
+cp ./coredump-handler/core-handler %{buildroot}/opt/tsg/coredump/bin
 cp ./config/config.json %{buildroot}/opt/tsg/coredump/etc
 cp ./coredump-tool/coredump-tool %{buildroot}/opt/tsg/coredump/bin
 cp ./script/coredump-tools.sh %{buildroot}/etc/profile.d
