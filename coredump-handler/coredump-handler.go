@@ -162,22 +162,50 @@ func writeCoreDumpToFile(config types.Coredump_config) error {
 		return err
 	}
 	defer file.Close()
-
+	buf := make([]byte, 1024*1024)
+	data := make([]byte, 1024*1024)
 	// create a pipe to write file
 	reader, writer := io.Pipe()
 	go func() {
 		defer writer.Close()
-		io.Copy(writer, os.Stdin)
+		// io.Copy(writer, os.Stdin)
+		for {
+			// 从标准输入中读取数据块
+			n, err := os.Stdin.Read(buf)
+			if err != nil {
+				journal.Print(journal.PriErr, err.Error())
+				writer.Close()
+				return
+			}
+			// 将读取的数据块写入到管道中
+			_, err = writer.Write(buf[:n])
+			if err != nil {
+				journal.Print(journal.PriErr, err.Error())
+				return
+			}
+		}
 	}()
 
-	io.Copy(file, reader)
+	for {
+		// 从管道中读取数据，直到管道被关闭
+		_, err = io.CopyBuffer(file, reader, data)
+		if err != nil {
+			if err != io.EOF {
+				return err
+			}
+			break
+		}
+		_, err = file.Write(data)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 func writeMiniDumpToFile(config types.Coredump_config) error {
 	filename := fmt.Sprintf("%s/%s_%s_%d.minidump", config.Storage, config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
 	cmd := exec.Command("/opt/tsg/coredump/bin/core_handler", config.Initial_ns_pid, filename)
 	cmd.Stdin = os.Stdin
-	// 获取 Python 脚本的输出
 	output, err := cmd.Output()
 	if err != nil {
 		return err
@@ -203,12 +231,31 @@ func compress(config types.Coredump_config) error {
 		Name:   filename,
 		Method: zip.Deflate,
 	}
+
 	// Write the header to the zip file.
 	writer, err := zipwriter.CreateHeader(header)
 	if err != nil {
 		return err
 	}
-	io.Copy(writer, os.Stdin)
+
+	// Set the block size to 1 megabyte.
+	const blockSize = 1024 * 1024
+
+	// Read and write the input in blocks.
+	buf := make([]byte, blockSize)
+	for {
+		n, err := os.Stdin.Read(buf)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+		_, err = writer.Write(buf[:n])
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
