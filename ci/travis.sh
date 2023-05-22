@@ -43,7 +43,7 @@ go env
 pwd
 ls
 mkdir -p /builds/linxin/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-cd /builds/linxin/coredump-tools/breakpad/src/tools/linux/coredump_handler_wrapper
+cd /builds/linxin/coredump-tools/breakpad-coredump-tools/src/tools/linux/coredump_handler_wrapper
 make
 mkdir /opt/tsg/coredump/bin
 cp coredump_handler_wrapper.so /opt/tsg/coredump/bin

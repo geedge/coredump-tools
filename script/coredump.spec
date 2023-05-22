@@ -31,7 +31,7 @@ mkdir -p %{buildroot}/opt/tsg/coredump/etc
 mkdir -p %{buildroot}/etc/profile.d
 mkdir -p %{buildroot}/usr/lib/tmpfiles.d
 mkdir -p %{buildroot}/usr/lib/sysctl.d
-cp /builds/linxin/coredump-tools/breakpad/src/tools/linux/coredump_handler_wrapper/coredump_handler_wrapper.so %{buildroot}/opt/tsg/coredump/bin
+cp /builds/linxin/coredump-tools/breakpad-coredump-tools/src/tools/linux/coredump_handler_wrapper/coredump_handler_wrapper.so %{buildroot}/opt/tsg/coredump/bin
 cp ./coredump-handler/coredump-handler %{buildroot}/opt/tsg/coredump/bin
 cp ./config/config.json %{buildroot}/opt/tsg/coredump/etc
 cp ./coredump-tool/coredump-tool %{buildroot}/opt/tsg/coredump/bin
