@@ -43,6 +43,10 @@ go env
 pwd
 ls
 mkdir -p /builds/linxin/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+cd /builds/linxin/coredump-tools/breakpad/src/tools/linux/coredump_handler_wrapper
+make
+mkdir /opt/tsg/coredump/bin
+cp coredump_handler_wrapper.so /opt/tsg/coredump/bin
 mv /builds/linxin/coredump-tools /builds/linxin/coredump-tools-${VERSION_ID}
 tar --warning=no-file-changed -czvf /builds/linxin/rpmbuild/SOURCES/coredump-tools-${VERSION_ID}-${COMMIT_ID}.tar.gz ../coredump-tools-${VERSION_ID}
 cp /builds/linxin/coredump-tools-${VERSION_ID}/script/coredump.spec /builds/linxin/rpmbuild/SPECS

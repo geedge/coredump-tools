@@ -1,5 +1,11 @@
 package main
 
+//#cgo CXXFLAGS: -std=c++11
+// #cgo CFLAGS: -I .
+// #cgo LDFLAGS: /opt/tsg/coredump/bin/coredump_handler_wrapper.so
+//#include "coredump_handler_wrapper.h"
+import "C"
+
 import (
 	"archive/zip"
 	"context"
@@ -12,7 +18,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -163,54 +168,43 @@ func writeCoreDumpToFile(config types.Coredump_config) error {
 	}
 	defer file.Close()
 	buf := make([]byte, 1024*1024)
-	data := make([]byte, 1024*1024)
-	// create a pipe to write file
-	reader, writer := io.Pipe()
-	go func() {
-		defer writer.Close()
-		// io.Copy(writer, os.Stdin)
-		for {
-			// 从标准输入中读取数据块
-			n, err := os.Stdin.Read(buf)
-			if err != nil {
-				journal.Print(journal.PriErr, err.Error())
-				writer.Close()
-				return
-			}
-			// 将读取的数据块写入到管道中
-			_, err = writer.Write(buf[:n])
-			if err != nil {
-				journal.Print(journal.PriErr, err.Error())
-				return
-			}
-		}
-	}()
-
 	for {
-		// 从管道中读取数据，直到管道被关闭
-		_, err = io.CopyBuffer(file, reader, data)
-		if err != nil {
-			if err != io.EOF {
-				return err
-			}
+		n, err := os.Stdin.Read(buf)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if n == 0 {
 			break
 		}
-		_, err = file.Write(data)
+		_, err = file.Write(buf[:n])
 		if err != nil {
 			return err
 		}
 	}
 	return nil
 }
+func HandleCrash(pid int, procfsDir string, mdFilename string) bool {
+	journal.Print(journal.PriInfo, "start convert to minidump")
+	return bool(C.HandleCrash(C.pid_t(pid), C.CString(procfsDir), C.CString(mdFilename)))
+}
 func writeMiniDumpToFile(config types.Coredump_config) error {
 	filename := fmt.Sprintf("%s/%s_%s_%d.minidump", config.Storage, config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
-	cmd := exec.Command("/opt/tsg/coredump/bin/core_handler", config.Initial_ns_pid, filename)
-	cmd.Stdin = os.Stdin
-	output, err := cmd.Output()
+	pid, err := strconv.Atoi(config.Initial_ns_pid)
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(output))
+	flag := HandleCrash(pid, "/proc/"+config.Initial_ns_pid, filename)
+	if !flag {
+		return errors.New("can not convert to minidump")
+	}
+	journal.Print(journal.PriInfo, "end convert to minidump")
+	// cmd := exec.Command("/opt/tsg/coredump/bin/core_handler", config.Initial_ns_pid, filename)
+	// cmd.Stdin = os.Stdin
+	// output, err := cmd.Output()
+	// if err != nil {
+	// 	return err
+	// }
+	// fmt.Println(string(output))
 	return nil
 }
 func compress(config types.Coredump_config) error {
