@@ -1,0 +1,9 @@
+src/processor/dump_object.o: src/processor/dump_object.cc \
+ /usr/include/stdc-predef.h src/config.h \
+ src/google_breakpad/processor/dump_object.h
+
+/usr/include/stdc-predef.h:
+
+src/config.h:
+
+src/google_breakpad/processor/dump_object.h:
