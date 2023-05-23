@@ -122,6 +122,16 @@ func list(pid string) {
 
 func debug(config types.Coredump_config, command string) error {
 	// using kubectl to create a pod
+	if strings.HasSuffix(config.Storage, ".minidump") {
+		corefile := strings.Replace(config.Storage, ".minidump", ".coredump", -1)
+		cmd := exec.Command("minidump-2-core", "-o", corefile, config.Storage)
+		err := cmd.Run()
+		if err != nil {
+			return err
+		}
+		config.Storage = corefile
+		defer os.Remove(corefile)
+	}
 	if config.Image_name != "NULL" {
 		kubeconfig := os.Getenv("KUBECONFIG")
 		if kubeconfig == "" {
