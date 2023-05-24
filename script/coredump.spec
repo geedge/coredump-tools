@@ -35,6 +35,7 @@ cp ./coredump-handler/coredump_handler_wrapper.so %{buildroot}/opt/tsg/coredump/
 cp ./coredump-handler/coredump-handler %{buildroot}/opt/tsg/coredump/bin
 cp ./config/config.json %{buildroot}/opt/tsg/coredump/etc
 cp ./coredump-tool/coredump-tool %{buildroot}/opt/tsg/coredump/bin
+cp ./coredump-tool/minidump-2-core %{buildroot}/opt/tsg/coredump/bin
 cp ./script/coredump-tools.sh %{buildroot}/etc/profile.d
 cp ./coredump.conf %{buildroot}/usr/lib/tmpfiles.d
 cp ./60-coredump.conf %{buildroot}/usr/lib/sysctl.d
@@ -43,6 +44,7 @@ cp ./60-coredump.conf %{buildroot}/usr/lib/sysctl.d
 /opt/tsg/coredump/etc/config.json
 /opt/tsg/coredump/bin/coredump-handler
 /opt/tsg/coredump/bin/coredump-tool
+/opt/tsg/coredump/bin/minidump-2-core
 /opt/tsg/coredump/bin/coredump_handler_wrapper.so
 /etc/profile.d/coredump-tools.sh
 /usr/lib/tmpfiles.d/coredump.conf
