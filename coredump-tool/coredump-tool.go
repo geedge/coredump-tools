@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -59,6 +60,9 @@ func WalkDirectory(dir string) {
 					if config.Image_name == "" {
 						config.Image_name = "NULL"
 					}
+					if _, err := os.Stat(config.Storage); err != nil {
+						config.Storage = "MISS"
+					}
 					configs = append(configs, config)
 				}
 
@@ -72,12 +76,45 @@ func WalkDirectory(dir string) {
 
 		return nil
 	})
-
+	sort.Slice(configs, func(i, j int) bool {
+		return configs[i].Timestamp < configs[j].Timestamp
+	})
 	if err != nil {
 		fmt.Printf("Error walking directory %s: %v\n", dir, err)
 	}
 }
 func list(pid string) {
+	table := simpletable.New()
+
+	table.Header = &simpletable.Header{
+		Cells: []*simpletable.Cell{
+			{Text: "PID"},
+			{Text: "EXE"},
+			{Text: "IMAGE"},
+			{Text: "TIMESTAMP"},
+		},
+	}
+	total := 0
+	// output the config's info
+	for _, c := range configs {
+		if pid != "" && strings.Compare(c.Initial_ns_pid, pid) != 0 {
+			continue
+		}
+		coreTime := time.Unix(c.Timestamp, 0).Format("2006-01-02 15:04:05")
+		r := []*simpletable.Cell{
+			{Text: c.Initial_ns_pid},
+			{Text: c.Process_exe_path},
+			{Text: c.Image_name},
+			{Text: coreTime},
+		}
+		table.Body.Cells = append(table.Body.Cells, r)
+		total += 1
+	}
+	fmt.Println(table.String())
+	fmt.Println("Total", total, "coredumps")
+}
+
+func info(pid string) {
 	table := simpletable.New()
 
 	table.Header = &simpletable.Header{
@@ -121,7 +158,6 @@ func list(pid string) {
 }
 
 func debug(config types.Coredump_config, command string) error {
-	// using kubectl to create a pod
 	if strings.HasSuffix(config.Storage, ".minidump") {
 		corefile := strings.Replace(config.Storage, ".minidump", ".coredump", -1)
 		cmd := exec.Command("minidump-2-core", "-o", corefile, config.Storage)
@@ -358,6 +394,32 @@ func main() {
 				Action: func(c *cli.Context) error {
 					WalkDirectory(dirPath)
 					list(pid)
+					return nil
+				},
+			},
+			{
+				Name:    "info",
+				Aliases: []string{"i"},
+				Usage:   "Display all coredump files's info",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "pid",
+						Aliases:     []string{"p"},
+						Usage:       "Pid to match",
+						Value:       "",
+						Destination: &pid,
+					},
+					&cli.StringFlag{
+						Name:        "dir",
+						Aliases:     []string{"d"},
+						Usage:       "Coredump directory path(default: /var/lib/coredump)",
+						Value:       "/var/lib/coredump",
+						Destination: &dirPath,
+					},
+				},
+				Action: func(c *cli.Context) error {
+					WalkDirectory(dirPath)
+					info(pid)
 					return nil
 				},
 			},
