@@ -70,7 +70,7 @@ func WalkDirectory(dir string) {
 			})
 
 			if err != nil {
-				return err
+				fmt.Printf("Error walking directory %s: %v\n", path, err)
 			}
 		}
 
