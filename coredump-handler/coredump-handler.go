@@ -359,6 +359,21 @@ func main() {
 	//write coredump info
 	err = writeCoreConfig(coredump_config)
 	if err != nil {
+		journal.Print(journal.PriErr, err.Error())
+	}
+	flag, err = isDiskSufficient(pipe_config)
+	if err != nil {
+		journal.Print(journal.PriErr, "Can't judge disk's space is sufficient or not. "+err.Error())
+		return
+	}
+	if !flag {
+		journal.Print(journal.PriErr, "Disk space exceeds limit after write coredump!")
+		err := os.RemoveAll(pipe_config.Storage)
+		if err != nil {
+			journal.Print(journal.PriErr, err.Error())
+			return
+		}
 		journal.Print(journal.PriInfo, err.Error())
+		return
 	}
 }
