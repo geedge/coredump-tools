@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"coredump-tools/types"
 	"encoding/json"
@@ -28,6 +29,13 @@ import (
 )
 
 var configs []types.Coredump_config
+
+var (
+	pid          string
+	dirPath      string
+	command      string
+	prestartPath string
+)
 
 // WalkDirectory search file with suffix name ".info"
 
@@ -157,13 +165,15 @@ func info(pid string) {
 	fmt.Println("Total", total, "coredumps")
 }
 
-func debug(config types.Coredump_config, command string) error {
+func debug(config types.Coredump_config, command, prestartPath string) error {
 	if strings.HasSuffix(config.Storage, ".minidump") {
 		corefile := strings.Replace(config.Storage, ".minidump", ".coredump", -1)
 		cmd := exec.Command("minidump-2-core", "-o", corefile, config.Storage)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
 		err := cmd.Run()
 		if err != nil {
-			return err
+			return (errors.New(err.Error() + ":" + stderr.String()))
 		}
 		config.Storage = corefile
 		defer os.Remove(corefile)
@@ -184,7 +194,7 @@ func debug(config types.Coredump_config, command string) error {
 		if err != nil {
 			return err
 		}
-		podName, err := debugInpod(conf, clientset, config, command)
+		podName, err := debugInpod(conf, clientset, config, command, prestartPath)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -208,11 +218,11 @@ func debug(config types.Coredump_config, command string) error {
 	}
 	return nil
 }
-func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types.Coredump_config, command string) (string, error) {
+func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types.Coredump_config, command, prestartPath string) (string, error) {
 	// Define the Pod object
 	id := uuid.New()
 	fmt.Println(id.String())
-	podName := fmt.Sprintf("node-debug-%s", id.String())
+	podName := fmt.Sprintf("coredump-debug-%s", id.String())
 	containerName := "debug"
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -289,7 +299,27 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 			RestartPolicy: v1.RestartPolicyNever,
 		},
 	}
-
+	if prestartPath != "" {
+		prestartVolumeMount := v1.VolumeMount{
+			Name:      "prestart-dir",
+			MountPath: "/prestart.sh",
+		}
+		prestartVolume := v1.Volume{
+			Name: "prestart-dir",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: prestartPath,
+				},
+			},
+		}
+		pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, prestartVolumeMount)
+		pod.Spec.Volumes = append(pod.Spec.Volumes, prestartVolume)
+		pod.Spec.Containers[0].Command = []string{
+			"sh",
+			"-c",
+			"chmod +x /prestart.sh && /prestart.sh && tail -f",
+		}
+	}
 	// Create the Pod
 	fmt.Println("Creating Pod...")
 	fmt.Printf("Creating Pod %q...\n", podName)
@@ -361,13 +391,8 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 	return podName, nil
 }
 
-func main() {
-	var (
-		pid     string
-		dirPath string
-		command string
-	)
-	app := &cli.App{
+func command_init() cli.App {
+	return cli.App{
 		Name:  "coredump",
 		Usage: "Manage coredump files in Kubernetes clusters",
 		Commands: []*cli.Command{
@@ -443,16 +468,39 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:        "command",
+						Aliases:     []string{"c"},
 						Usage:       "Debugger command (default: gdb)",
 						Value:       "gdb",
 						Destination: &command,
 					},
+					&cli.StringFlag{
+						Name:        "prestart",
+						Aliases:     []string{"P"},
+						Usage:       "Prestart script path just used in Pod's coredump debug",
+						Value:       "",
+						Destination: &prestartPath,
+					},
 				},
 				Action: func(c *cli.Context) error {
+					if prestartPath != "" {
+						_, err := os.Stat(prestartPath)
+						if err != nil {
+							if os.IsNotExist(err) {
+								fmt.Println("prestartfile is not exist!")
+							} else {
+								fmt.Println(err)
+							}
+							return nil
+						}
+					}
 					WalkDirectory(dirPath)
 					for _, config := range configs {
 						if strings.Compare(config.Initial_ns_pid, pid) == 0 || pid == "" {
-							err := debug(config, command)
+							if prestartPath != "" && config.Image_name == "NULL" {
+								fmt.Println("Coredump is not generate in Pod.Prestart just use in Pod's coredump debug!")
+								return nil
+							}
+							err := debug(config, command, prestartPath)
 							if err != nil {
 								fmt.Println(err)
 							} else {
@@ -473,7 +521,10 @@ func main() {
 			},
 		},
 	}
+}
 
+func main() {
+	app := command_init()
 	err := app.Run(os.Args)
 	if err != nil {
 		fmt.Println(err)
