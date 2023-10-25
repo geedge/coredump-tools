@@ -189,14 +189,7 @@ func writeCoreDumpToFile(config types.Coredump_config, pipe_config types.Pipecon
 				return err
 			}
 			if !flag {
-				journal.Print(journal.PriErr, "Disk space exceeds limit after write coredump!")
-				err := os.RemoveAll(pipe_config.Storage)
-				if err != nil {
-					journal.Print(journal.PriErr, err.Error())
-					return err
-				}
-				journal.Print(journal.PriInfo, err.Error())
-				return err
+				return errors.New("Disk space exceeds limit when writing coredump!")
 			}
 			nums = 0
 		}
