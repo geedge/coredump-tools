@@ -160,7 +160,7 @@ func writeCoreConfig(config types.Coredump_config) error {
 }
 
 // write coredump to file
-func writeCoreDumpToFile(config types.Coredump_config) error {
+func writeCoreDumpToFile(config types.Coredump_config, pipe_config types.Pipeconfig) error {
 	filename := fmt.Sprintf("%s_%s_%d.coredump", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
 	file, err := os.Create(filename)
 	if err != nil {
@@ -168,6 +168,7 @@ func writeCoreDumpToFile(config types.Coredump_config) error {
 	}
 	defer file.Close()
 	buf := make([]byte, 1024*1024)
+	nums := 0
 	for {
 		n, err := os.Stdin.Read(buf)
 		if err != nil && err != io.EOF {
@@ -179,6 +180,25 @@ func writeCoreDumpToFile(config types.Coredump_config) error {
 		_, err = file.Write(buf[:n])
 		if err != nil {
 			return err
+		}
+		nums += 1
+		if nums >= 10 {
+			flag, err := isDiskSufficient(pipe_config)
+			if err != nil {
+				journal.Print(journal.PriErr, "Can't judge disk's space is sufficient or not. "+err.Error())
+				return err
+			}
+			if !flag {
+				journal.Print(journal.PriErr, "Disk space exceeds limit after write coredump!")
+				err := os.RemoveAll(pipe_config.Storage)
+				if err != nil {
+					journal.Print(journal.PriErr, err.Error())
+					return err
+				}
+				journal.Print(journal.PriInfo, err.Error())
+				return err
+			}
+			nums = 0
 		}
 	}
 	return nil
@@ -337,7 +357,7 @@ func main() {
 	//write coredump file
 	if !pipe_config.Compress {
 		if pipe_config.Storage_type == 1 {
-			err = writeCoreDumpToFile(coredump_config)
+			err = writeCoreDumpToFile(coredump_config, pipe_config)
 			if err != nil {
 				journal.Print(journal.PriErr, err.Error())
 			}

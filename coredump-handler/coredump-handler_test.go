@@ -97,6 +97,9 @@ func TestWriteCoreDumpToFile(t *testing.T) {
 		Corepipe_config_path: "/tmp/config.yaml",
 		Timestamp:            12345678,
 	}
+	pipe_config := types.Pipeconfig{
+		Storage: "/tmp",
+	}
 	cmd := exec.Command("echo", "test")
 	cmdReader, err := cmd.StdoutPipe()
 	if err != nil {
@@ -112,7 +115,7 @@ func TestWriteCoreDumpToFile(t *testing.T) {
 	if err != nil {
 		t.Errorf("WriteCoreDumpToFile() error = %v", err)
 	}
-	err = writeCoreDumpToFile(config)
+	err = writeCoreDumpToFile(config, pipe_config)
 	if err != nil {
 		t.Errorf("WriteCoreDumpToFile() error = %v", err)
 	}
