@@ -123,25 +123,33 @@ func getContainerId(pid string) (string, error) {
 	return containerID, nil
 }
 
-// get image name by container id
-func getImageName(container_id string, sock_path string) (string, error) {
+// get container info by container id
+func getContainerInfo(container_id string, sock_path string) (string, string, error) {
 	// connect to containerd daemon
 	client, err := containerd.New(sock_path)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer client.Close()
 	// according to container id to get container info
 	ctx := namespaces.WithNamespace(context.Background(), "k8s.io")
 	container, err := client.LoadContainer(ctx, container_id)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	imageRef, err := container.Image(ctx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return imageRef.Name(), nil
+	label, err := container.Labels(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	pod_name, ok := label["io.kubernetes.pod.name"]
+	if !ok {
+		return imageRef.Name(), "", nil
+	}
+	return imageRef.Name(), pod_name, nil
 }
 
 // write coredump info to file
@@ -336,7 +344,7 @@ func main() {
 	//find image name
 	if err == nil && len(container_id) != 0 {
 		coredump_config.Container_id = container_id
-		coredump_config.Image_name, err = getImageName(container_id, pipe_config.Containered_sock_path)
+		coredump_config.Image_name, coredump_config.Pod_name, err = getContainerInfo(container_id, pipe_config.Containered_sock_path)
 		if err != nil {
 			journal.Print(journal.PriInfo, err.Error())
 		}
@@ -346,6 +354,9 @@ func main() {
 	}
 	if coredump_config.Image_name == "" {
 		coredump_config.Image_name = "NULL"
+	}
+	if coredump_config.Pod_name == "" {
+		coredump_config.Pod_name = "NULL"
 	}
 	//write coredump file
 	if !pipe_config.Compress {

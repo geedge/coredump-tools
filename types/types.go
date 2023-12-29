@@ -20,6 +20,7 @@ type Coredump_config struct {
 	Timestamp            int64
 	Corepipe_config_path string `json:"-"`
 	Container_id         string
+	Pod_name             string
 	Image_name           string
 	UID                  string
 	GID                  string

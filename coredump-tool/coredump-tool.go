@@ -132,7 +132,7 @@ func info(pid string) {
 			{Text: "GID"},
 			{Text: "SIG"},
 			{Text: "EXE"},
-			{Text: "CONTAINER"},
+			{Text: "POD"},
 			{Text: "IMAGE"},
 			{Text: "HOSTNAME"},
 			{Text: "STORAGE"},
@@ -152,7 +152,7 @@ func info(pid string) {
 			{Text: c.GID},
 			{Text: strconv.Itoa(c.Signal)},
 			{Text: c.Process_exe_path},
-			{Text: c.Container_id},
+			{Text: c.Pod_name},
 			{Text: c.Image_name},
 			{Text: c.Hostname},
 			{Text: c.Storage},
@@ -342,7 +342,7 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 			ready = true
 			break
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 	if !ready {
 		return podName, errors.New("create pod timeout")
