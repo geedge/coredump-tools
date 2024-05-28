@@ -29,6 +29,7 @@ import (
 )
 
 var coredump_config types.Coredump_config
+var percent int64
 
 func argsJudge() error {
 
@@ -57,32 +58,18 @@ func argsJudge() error {
 }
 
 // judge disk's space is sufficient or not
-func isDiskSufficient(pipe_config types.Pipeconfig) (bool, error) {
-	percent, err := strconv.ParseInt(pipe_config.Total_file_mem_limit[:len(pipe_config.Total_file_mem_limit)-1], 10, 32)
-	if err != nil {
-		return false, err
-	}
+func isDiskSufficient(pipe_config types.Pipeconfig) (bool, string, error) {
 	wd := pipe_config.Storage
-	if err != nil {
-		fmt.Println(err)
-		return false, err
-	}
 	diskinfo, err := disk.Usage(wd)
 	if err != nil {
-		return false, err
-	}
-	data, err := json.MarshalIndent(diskinfo, "", "  ")
-	if err != nil {
-		info := fmt.Sprintf("diskinfo:%s", string(data))
-		journal.Print(journal.PriInfo, info)
+		return false, "", err
 	}
 	usage := int64(math.Floor(diskinfo.UsedPercent + 0.5))
 	info := fmt.Sprintf("usage:%d,limited:%d", usage, percent)
-	journal.Print(journal.PriInfo, info)
 	if usage >= percent {
-		return false, nil
+		return false, info, nil
 	}
-	return true, nil
+	return true, info, nil
 }
 
 // create dir to storage coredump file and coredump info
@@ -175,8 +162,7 @@ func writeCoreDumpToFile(config types.Coredump_config, pipe_config types.Pipecon
 		return err
 	}
 	defer file.Close()
-	buf := make([]byte, 1024*1024)
-	nums := 0
+	buf := make([]byte, 10*1024*1024)
 	for {
 		n, err := os.Stdin.Read(buf)
 		if err != nil && err != io.EOF {
@@ -189,25 +175,23 @@ func writeCoreDumpToFile(config types.Coredump_config, pipe_config types.Pipecon
 		if err != nil {
 			return err
 		}
-		nums += 1
-		if nums >= 10 {
-			flag, err := isDiskSufficient(pipe_config)
-			if err != nil {
-				journal.Print(journal.PriErr, "Can't judge disk's space is sufficient or not. "+err.Error())
-				return err
-			}
-			if !flag {
-				return errors.New("Disk space exceeds limit when writing coredump!")
-			}
-			nums = 0
+		flag, _, err := isDiskSufficient(pipe_config)
+		if err != nil {
+			journal.Print(journal.PriErr, "Can't judge disk's space is sufficient or not. "+err.Error())
+			return err
+		}
+		if !flag {
+			return errors.New("Disk space exceeds limit when writing coredump!")
 		}
 	}
 	return nil
 }
+
 func HandleCrash(pid int, procfsDir string, mdFilename string) bool {
 	journal.Print(journal.PriInfo, "start convert to minidump")
 	return bool(C.HandleCrash(C.pid_t(pid), C.CString(procfsDir), C.CString(mdFilename)))
 }
+
 func writeMiniDumpToFile(config types.Coredump_config) error {
 	filename := fmt.Sprintf("%s/%s_%s_%d.minidump", config.Storage, config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
 	pid, err := strconv.Atoi(config.Initial_ns_pid)
@@ -219,15 +203,9 @@ func writeMiniDumpToFile(config types.Coredump_config) error {
 		return errors.New("can not convert to minidump")
 	}
 	journal.Print(journal.PriInfo, "end convert to minidump")
-	// cmd := exec.Command("/opt/tsg/coredump/bin/core_handler", config.Initial_ns_pid, filename)
-	// cmd.Stdin = os.Stdin
-	// output, err := cmd.Output()
-	// if err != nil {
-	// 	return err
-	// }
-	// fmt.Println(string(output))
 	return nil
 }
+
 func compress(config types.Coredump_config) error {
 	// Create a new zip archive.
 	filename := fmt.Sprintf("%s_%s_%d.coredump", config.Initial_ns_pid, config.Process_ns_pid, config.Timestamp)
@@ -274,9 +252,8 @@ func compress(config types.Coredump_config) error {
 
 	return nil
 }
-func main() {
-	info := fmt.Sprintf("start handle coredump")
-	journal.Print(journal.PriInfo, info)
+
+func init() {
 	flag.StringVar(&coredump_config.Initial_ns_pid, "P", "", "initial ns pid")
 	flag.StringVar(&coredump_config.Process_ns_pid, "p", "", "process ns pid")
 	flag.StringVar(&coredump_config.Process_exe_path, "E", "", "pathname of executable process")
@@ -285,13 +262,15 @@ func main() {
 	flag.StringVar(&coredump_config.GID, "g", "", "Numeric real GID of dumped process.")
 	flag.IntVar(&coredump_config.Signal, "s", -1, "Number of signal causing dump")
 	flag.StringVar(&coredump_config.UID, "u", "", "Numeric real UID of dumped process.")
-	flag.Parse()
+}
+
+func start() {
 	var err error
 	coredump_config.Hostname, err = os.Hostname()
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
 	}
-	info = fmt.Sprintf("initialize command line parameters. -P=%s -p=%s -E=%s -C=%s -t=%d -g=%s -h=%s -s=%d -u=%s", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestamp, coredump_config.GID, coredump_config.Hostname, coredump_config.Signal, coredump_config.UID)
+	info := fmt.Sprintf("initialize command line parameters. -P=%s -p=%s -E=%s -C=%s -t=%d -g=%s -h=%s -s=%d -u=%s", coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Process_exe_path, coredump_config.Corepipe_config_path, coredump_config.Timestamp, coredump_config.GID, coredump_config.Hostname, coredump_config.Signal, coredump_config.UID)
 	journal.Print(journal.PriInfo, info)
 	coredump_config.Process_exe_path = strings.Replace(coredump_config.Process_exe_path, "!", "/", -1)
 	//Judge agrs is correct or not.
@@ -316,11 +295,19 @@ func main() {
 			return
 		}
 	}
-	//judge disk usage
-	flag, err := isDiskSufficient(pipe_config)
+	percent, err = strconv.ParseInt(pipe_config.Total_file_mem_limit[:len(pipe_config.Total_file_mem_limit)-1], 10, 32)
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
 		return
+	}
+	//judge disk usage
+	flag, info, err := isDiskSufficient(pipe_config)
+	if err != nil {
+		journal.Print(journal.PriErr, err.Error())
+		return
+	}
+	if info != "" {
+		journal.Print(journal.PriInfo, info)
 	}
 	if !flag {
 		journal.Print(journal.PriErr, "Disk space exceeds limit")
@@ -385,10 +372,13 @@ func main() {
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
 	}
-	flag, err = isDiskSufficient(pipe_config)
+	flag, info, err = isDiskSufficient(pipe_config)
 	if err != nil {
 		journal.Print(journal.PriErr, "Can't judge disk's space is sufficient or not. "+err.Error())
 		return
+	}
+	if info != "" {
+		journal.Print(journal.PriInfo, info)
 	}
 	if !flag {
 		journal.Print(journal.PriErr, "Disk space exceeds limit after write coredump!")
@@ -400,4 +390,12 @@ func main() {
 		journal.Print(journal.PriInfo, err.Error())
 		return
 	}
+}
+
+func main() {
+	info := fmt.Sprintf("start handle coredump")
+	journal.Print(journal.PriInfo, info)
+	flag.Parse()
+	start()
+	journal.Print(journal.PriInfo, "finish to write coredump")
 }
