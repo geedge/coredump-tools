@@ -8,6 +8,7 @@ import "C"
 
 import (
 	"archive/zip"
+	"bufio"
 	"context"
 	"coredump-tools/config"
 	"coredump-tools/types"
@@ -253,6 +254,103 @@ func compress(config types.Coredump_config) error {
 	return nil
 }
 
+func getLibrariesFromMaps(mapsFile string) ([]string, error) {
+	file, err := os.Open(mapsFile)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	libSet := make(map[string]struct{})
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Fields(line)
+		if len(parts) > 5 && !strings.Contains(parts[5], "[") && strings.Contains(parts[1], "x") {
+			libSet[parts[5]] = struct{}{}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	var libs []string
+	for lib := range libSet {
+		libs = append(libs, lib)
+	}
+
+	return libs, nil
+}
+
+func addFileToZip(zipWriter *zip.Writer, filename string, pid string, pipe_config types.Pipeconfig) error {
+	libabspath := fmt.Sprintf("/proc/%s/root%s", pid, filename)
+	fileToZip, err := os.Open(libabspath)
+	if err != nil {
+		return err
+	}
+	defer fileToZip.Close()
+
+	info, err := fileToZip.Stat()
+	if err != nil {
+		return err
+	}
+
+	header, err := zip.FileInfoHeader(info)
+	if err != nil {
+		return err
+	}
+	header.Name = filename
+	header.Method = zip.Deflate
+
+	writer, err := zipWriter.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(writer, fileToZip)
+	if err != nil {
+		return err
+	}
+	flag, _, err := isDiskSufficient(pipe_config)
+	if err != nil {
+		journal.Print(journal.PriErr, "Can't judge disk's space is sufficient or not. "+err.Error())
+		return err
+	}
+	if !flag {
+		return errors.New("Disk space exceeds limit when writing coredump!")
+	}
+	return nil
+}
+
+func writelibfile(pid string, pipe_config types.Pipeconfig) error {
+	mapsFile := fmt.Sprintf("/proc/%s/maps", pid)
+	libs, err := getLibrariesFromMaps(mapsFile)
+	if err != nil {
+		return err
+	}
+	// for _, lib := range libs {
+	// 	journal.Print(journal.PriDebug,lib)
+	// }
+	// journal.Print(journal.PriDebug,"lib's num:", len(libs))
+	filePath := fmt.Sprintf("%s/Executable_file.gz", pipe_config.Storage)
+	zipFile, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer zipFile.Close()
+
+	zipWriter := zip.NewWriter(zipFile)
+	defer zipWriter.Close()
+
+	for _, file := range libs {
+		addFileToZip(zipWriter, file, pid, pipe_config)
+	}
+
+	journal.Print(journal.PriInfo, "Tar file created successfully")
+	return nil
+}
+
 func init() {
 	flag.StringVar(&coredump_config.Initial_ns_pid, "P", "", "initial ns pid")
 	flag.StringVar(&coredump_config.Process_ns_pid, "p", "", "process ns pid")
@@ -367,6 +465,8 @@ func start() {
 		}
 		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d.coredump.zip", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
 	}
+	writelibfile(coredump_config.Initial_ns_pid, pipe_config)
+	coredump_config.Executable_file = fmt.Sprintf("%s/Executable_file.gz", pipe_config.Storage)
 	//write coredump info
 	err = writeCoreConfig(coredump_config)
 	if err != nil {
