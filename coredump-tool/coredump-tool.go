@@ -224,7 +224,7 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 	if err != nil {
 		return "", err
 	}
-	image := fmt.Sprintln("registry.gdnt-cloud.website/tsg-init:", imageversion)
+	image := fmt.Sprintf("registry.gdnt-cloud.website/tsg-init:%s", imageversion)
 	volumeMounts := []v1.VolumeMount{
 		{
 			Name:      "host-dir",
