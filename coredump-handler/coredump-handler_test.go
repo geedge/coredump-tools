@@ -45,7 +45,7 @@ func TestIsDiskSufficient(t *testing.T) {
 	pipe_config := types.Pipeconfig{
 		Total_file_mem_limit: "50%",
 	}
-	res, err := isDiskSufficient(pipe_config)
+	res, _, err := isDiskSufficient(pipe_config)
 	if err != nil || !res {
 		t.Errorf("isDiskSufficient() error = %v; want res = true", err)
 	}
@@ -76,8 +76,8 @@ func TestGetContainerId(t *testing.T) {
 }
 
 func TestGetImageId(t *testing.T) {
-	image_id, err := getImageName("1234567890abcdef", "/var/run/containerd.sock")
-	if err != nil || len(image_id) == 0 {
+	image_id, pod_name, err := getContainerInfo("1234567890abcdef", "/var/run/containerd.sock")
+	if err != nil || len(image_id) == 0 || len(pod_name) == 0 {
 		t.Errorf("getImageId() error = %v; want image_id != \"\"", err)
 	}
 }
