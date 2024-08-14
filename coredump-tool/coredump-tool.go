@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"coredump-tools/types"
@@ -123,22 +124,6 @@ func list(pid string) {
 }
 
 func info(pid string) {
-	table := simpletable.New()
-
-	table.Header = &simpletable.Header{
-		Cells: []*simpletable.Cell{
-			{Text: "PID"},
-			{Text: "UID"},
-			{Text: "GID"},
-			{Text: "SIG"},
-			{Text: "EXE"},
-			{Text: "POD"},
-			{Text: "IMAGE"},
-			{Text: "HOSTNAME"},
-			{Text: "STORAGE"},
-			{Text: "TIMESTAMP"},
-		},
-	}
 	total := 0
 	// output the config's info
 	for _, c := range configs {
@@ -146,23 +131,44 @@ func info(pid string) {
 			continue
 		}
 		coreTime := time.Unix(c.Timestamp, 0).Format("2006-01-02 15:04:05")
-		r := []*simpletable.Cell{
-			{Text: c.Initial_ns_pid},
-			{Text: c.UID},
-			{Text: c.GID},
-			{Text: strconv.Itoa(c.Signal)},
-			{Text: c.Process_exe_path},
-			{Text: c.Pod_name},
-			{Text: c.Image_name},
-			{Text: c.Hostname},
-			{Text: c.Storage},
-			{Text: coreTime},
-		}
-		table.Body.Cells = append(table.Body.Cells, r)
+		fmt.Println("PID: " + c.Initial_ns_pid)
+		fmt.Println("UID: " + c.UID)
+		fmt.Println("GID: " + c.GID)
+		fmt.Println("SIG: " + strconv.Itoa(c.Signal))
+		fmt.Println("EXE: " + c.Process_exe_path)
+		fmt.Println("POD: " + c.Pod_name)
+		fmt.Println("IMAGE: " + c.Image_name)
+		fmt.Println("HOSTNAME: " + c.Hostname)
+		fmt.Println("STORAGE: " + c.Storage)
+		fmt.Println("TIMESTAMP: " + coreTime)
+		fmt.Println()
+		fmt.Println()
 		total += 1
 	}
-	fmt.Println(table.String())
 	fmt.Println("Total", total, "coredumps")
+}
+
+func getImageVersion() (string, error) {
+	file, err := os.Open("/etc/os-release")
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "VERSION=") {
+			version := strings.TrimPrefix(line, "VERSION=")
+			version = strings.Trim(version, "\"")
+			imageVersion := strings.Split(version, " ")
+			fmt.Println("imageVersion:", imageVersion[0])
+			if len(imageVersion[0]) > 0 {
+				return imageVersion[0], nil
+			}
+			break
+		}
+	}
+	return "", errors.New("get empty version info")
 }
 
 func debug(config types.Coredump_config, command, prestartPath string) error {
@@ -178,43 +184,33 @@ func debug(config types.Coredump_config, command, prestartPath string) error {
 		config.Storage = corefile
 		defer os.Remove(corefile)
 	}
-	if config.Image_name != "NULL" {
-		kubeconfig := os.Getenv("KUBECONFIG")
-		if kubeconfig == "" {
-			kubeconfig = os.Getenv("HOME") + "/.kube/config"
-		}
+	kubeconfig := os.Getenv("KUBECONFIG")
+	if kubeconfig == "" {
+		kubeconfig = os.Getenv("HOME") + "/.kube/config"
+	}
 
-		// Creates the kubernetes client using the specified kubeconfig
-		conf, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-		if err != nil {
-			return err
-		}
+	// Creates the kubernetes client using the specified kubeconfig
+	conf, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		return err
+	}
 
-		clientset, err := kubernetes.NewForConfig(conf)
-		if err != nil {
-			return err
-		}
-		podName, err := debugInpod(conf, clientset, config, command, prestartPath)
-		if err != nil {
-			fmt.Println(err)
-		}
-		// Delete the Pod
+	clientset, err := kubernetes.NewForConfig(conf)
+	if err != nil {
+		return err
+	}
+	podName, err := debugInpod(conf, clientset, config, command, prestartPath)
+	if err != nil {
+		fmt.Println(err)
+	}
+	// Delete the Pod
+	if podName != "" {
 		fmt.Printf("Deleting Pod %q...\n", podName)
 		err = clientset.CoreV1().Pods("default").Delete(context.Background(), podName, metav1.DeleteOptions{})
 		if err != nil {
 			return err
 		}
 		fmt.Printf("Deleted Pod %q.\n", podName)
-		return nil
-	} else { // using gdb to debug the coredump file
-		cmd := exec.Command("gdb", config.Process_exe_path, config.Storage, "-cd", filepath.Dir(config.Process_exe_path))
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		fmt.Println(cmd.String())
-		if err := cmd.Run(); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -224,80 +220,70 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 	fmt.Println(id.String())
 	podName := fmt.Sprintf("coredump-debug-%s", id.String())
 	containerName := "debug"
-	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      podName,
-			Namespace: "default",
+	imageversion, err := getImageVersion()
+	if err != nil {
+		return "", err
+	}
+	image := fmt.Sprintln("registry.gdnt-cloud.website/tsg-init:", imageversion)
+	volumeMounts := []v1.VolumeMount{
+		{
+			Name:      "host-dir",
+			MountPath: "/host",
 		},
-		Spec: v1.PodSpec{
-			Containers: []v1.Container{
-				{
-					Name:            "debug",
-					Image:           config.Image_name,
-					ImagePullPolicy: "IfNotPresent",
-					Command: []string{
-						"tail",
-						"-f",
-					},
-					VolumeMounts: []v1.VolumeMount{
-						{
-							Name:      "host-dir",
-							MountPath: "/host",
-						},
-						{
-							Name:      "lib-debuginfo-dir",
-							MountPath: "/usr/lib/debug",
-						},
-						{
-							Name:      "src-debuginfo-dir",
-							MountPath: "/usr/src/debug",
-						},
-						{
-							Name:      "mrzcpd",
-							MountPath: "/opt/tsg/mrzcpd",
-						},
-					},
-					SecurityContext: &v1.SecurityContext{
-						Privileged: &[]bool{true}[0],
-					},
+		{
+			Name:      "lib-debuginfo-dir",
+			MountPath: "/usr/lib/debug",
+		},
+		{
+			Name:      "src-debuginfo-dir",
+			MountPath: "/usr/src/debug",
+		},
+		{
+			Name:      "mrzcpd",
+			MountPath: "/opt/tsg/mrzcpd",
+		},
+	}
+	volumes := []v1.Volume{
+		{
+			Name: "host-dir",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/",
 				},
 			},
-			Volumes: []v1.Volume{
-				{
-					Name: "host-dir",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: "/",
-						},
-					},
-				},
-				{
-					Name: "lib-debuginfo-dir",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: "/usr/lib/debug",
-						},
-					},
-				},
-				{
-					Name: "src-debuginfo-dir",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: "/usr/src/debug",
-						},
-					},
-				},
-				{
-					Name: "mrzcpd",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: "/opt/tsg/mrzcpd",
-						},
-					},
+		},
+		{
+			Name: "lib-debuginfo-dir",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/usr/lib/debug",
 				},
 			},
-			RestartPolicy: v1.RestartPolicyNever,
 		},
+		{
+			Name: "src-debuginfo-dir",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/usr/src/debug",
+				},
+			},
+		},
+		{
+			Name: "mrzcpd",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/opt/tsg/mrzcpd",
+				},
+			},
+		},
+	}
+	var containerCommands []string
+	var containerCommand string
+	if _, err := os.Stat(config.Executable_file); err != nil {
+		fmt.Println(err)
+		containerCommand = "tail -f"
+	} else {
+		containerCommand = fmt.Sprintf("unzip -o /host%s ; tail -f", config.Executable_file)
 	}
 	if prestartPath != "" {
 		prestartVolumeMount := v1.VolumeMount{
@@ -312,20 +298,48 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 				},
 			},
 		}
-		pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, prestartVolumeMount)
-		pod.Spec.Volumes = append(pod.Spec.Volumes, prestartVolume)
-		pod.Spec.Containers[0].Command = []string{
+		volumeMounts = append(volumeMounts, prestartVolumeMount)
+		volumes = append(volumes, prestartVolume)
+		containerCommands = []string{
 			"sh",
 			"-c",
-			"chmod +x /prestart.sh && /prestart.sh && tail -f",
+			"chmod +x /prestart.sh && /prestart.sh && " + containerCommand,
 		}
+	} else {
+		containerCommands = []string{
+			"sh",
+			"-c",
+			containerCommand,
+		}
+	}
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: "default",
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name:            "debug",
+					Image:           image,
+					ImagePullPolicy: "IfNotPresent",
+					Command:         containerCommands,
+					VolumeMounts:    volumeMounts,
+					SecurityContext: &v1.SecurityContext{
+						Privileged: &[]bool{true}[0],
+					},
+				},
+			},
+			Volumes:       volumes,
+			RestartPolicy: v1.RestartPolicyNever,
+		},
 	}
 	// Create the Pod
 	fmt.Println("Creating Pod...")
 	fmt.Printf("Creating Pod %q...\n", podName)
 	result, err := clientset.CoreV1().Pods("default").Create(context.Background(), pod, metav1.CreateOptions{})
 	if err != nil {
-		return podName, err
+		return "", err
 	}
 	fmt.Printf("Created Pod %q.\n", result.GetObjectMeta().GetName())
 
@@ -496,10 +510,6 @@ func command_init() cli.App {
 					WalkDirectory(dirPath)
 					for _, config := range configs {
 						if strings.Compare(config.Initial_ns_pid, pid) == 0 || pid == "" {
-							if prestartPath != "" && config.Image_name == "NULL" {
-								fmt.Println("Coredump is not generate in Pod.Prestart just use in Pod's coredump debug!")
-								return nil
-							}
 							err := debug(config, command, prestartPath)
 							if err != nil {
 								fmt.Println(err)
