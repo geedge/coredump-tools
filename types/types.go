@@ -27,7 +27,7 @@ type Coredump_config struct {
 	Signal               int
 	Hostname             string
 	Storage              string
-	Executable_file      string
+	Binary_file          string
 }
 type Coredump_cli_table struct {
 	PID       string
