@@ -32,6 +32,7 @@ import (
 
 var coredump_config types.Coredump_config
 var percent int64
+var sysrootPath string
 
 func argsJudge() error {
 
@@ -262,13 +263,13 @@ func getBinaryFileFromMaps(mapsFile string) ([]string, error) {
 	}
 	defer file.Close()
 
-	libSet := make(map[string]struct{})
+	binaryFileSet := make(map[string]struct{})
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
 		parts := strings.Fields(line)
 		if len(parts) > 5 && !strings.Contains(parts[5], "[") && strings.Contains(parts[1], "x") {
-			libSet[parts[5]] = struct{}{}
+			binaryFileSet[parts[5]] = struct{}{}
 		}
 	}
 
@@ -276,22 +277,22 @@ func getBinaryFileFromMaps(mapsFile string) ([]string, error) {
 		return nil, err
 	}
 
-	var libs []string
-	for lib := range libSet {
-		libs = append(libs, lib)
+	var binaryFiles []string
+	for binaryFile := range binaryFileSet {
+		binaryFiles = append(binaryFiles, binaryFile)
 	}
 
-	return libs, nil
+	return binaryFiles, nil
 }
 
-func getSymlinkFile(libs []string) []string {
+func getSymlinkFile(binaryFiles []string) []string {
 	Files := make(map[string]bool)
-	for i := 0; i < len(libs); i++ {
-		exePath := libs[i]
+	for i := 0; i < len(binaryFiles); i++ {
+		exePath := binaryFiles[i]
 		Files[exePath] = true
 		exeDir := filepath.Dir(exePath)
 		exePath = filepath.Base(exePath)
-		files, err := os.ReadDir(exeDir)
+		files, err := os.ReadDir(sysrootPath + "/root" + exeDir)
 		if err != nil {
 			journal.Print(journal.PriErr, "read dir %s err: %v\n", exeDir, err)
 			continue
@@ -299,7 +300,7 @@ func getSymlinkFile(libs []string) []string {
 		for _, file := range files {
 			if file.Type()&os.ModeSymlink != 0 {
 				linkPath := filepath.Join(exeDir, file.Name())
-				targetPath, err := os.Readlink(linkPath)
+				targetPath, err := os.Readlink(sysrootPath + "/root" + linkPath)
 				if err != nil {
 					journal.Print(journal.PriErr, "read %s err: %v\n", linkPath, err)
 					continue
@@ -309,43 +310,43 @@ func getSymlinkFile(libs []string) []string {
 					if _, ok := Files[linkPath]; ok {
 						continue
 					}
-					libs = append(libs, linkPath)
+					binaryFiles = append(binaryFiles, linkPath)
 				}
 			}
 		}
 	}
-	return libs
+	return binaryFiles
 }
 
-func getLdconf(libs []string) []string {
-	libs = append(libs, "/etc/ld.so.conf")
+func getLdconf(binaryFiles []string) []string {
+	binaryFiles = append(binaryFiles, "/etc/ld.so.conf")
 	ldConfDir := "/etc/ld.so.conf.d"
 
 	// 检查目录是否存在
-	_, err := os.Stat(ldConfDir)
+	_, err := os.Stat(sysrootPath + "/root" + ldConfDir)
 	if os.IsNotExist(err) {
 		journal.Print(journal.PriErr, "directory %s is not exist", ldConfDir)
-		return libs
+		return binaryFiles
 	}
 
 	// 读取目录下的所有文件
-	files, err := os.ReadDir(ldConfDir)
+	files, err := os.ReadDir(sysrootPath + "/root" + ldConfDir)
 	if err != nil {
 		journal.Print(journal.PriErr, "can not read directory %s: %v", ldConfDir, err)
-		return libs
+		return binaryFiles
 	}
 	for _, file := range files {
 		if !file.IsDir() {
 			filePath := filepath.Join(ldConfDir, file.Name())
-			libs = append(libs, filePath)
+			binaryFiles = append(binaryFiles, filePath)
 		}
 	}
-	return libs
+	return binaryFiles
 }
 
-func addFileToZip(zipWriter *zip.Writer, filename string, pid string, pipe_config types.Pipeconfig) error {
-	libabspath := fmt.Sprintf("/proc/%s/root%s", pid, filename)
-	fileToZip, err := os.Open(libabspath)
+func addFileToZip(zipWriter *zip.Writer, filename string, pipe_config types.Pipeconfig) error {
+	binaryFileAbsPath := fmt.Sprintf("%s/root%s", sysrootPath, filename)
+	fileToZip, err := os.Open(binaryFileAbsPath)
 	if err != nil {
 		return err
 	}
@@ -383,14 +384,14 @@ func addFileToZip(zipWriter *zip.Writer, filename string, pid string, pipe_confi
 	return nil
 }
 
-func writeBinaryFile(pid string, pipe_config types.Pipeconfig, filePath string) error {
-	mapsFile := fmt.Sprintf("/proc/%s/maps", pid)
-	libs, err := getBinaryFileFromMaps(mapsFile)
+func writeBinaryFile(pipe_config types.Pipeconfig, filePath string) error {
+	mapsFile := fmt.Sprintf("%s/maps", sysrootPath)
+	binaryFiles, err := getBinaryFileFromMaps(mapsFile)
 	if err != nil {
 		return err
 	}
-	libs = getSymlinkFile(libs)
-	libs = getLdconf(libs)
+	binaryFiles = getSymlinkFile(binaryFiles)
+	binaryFiles = getLdconf(binaryFiles)
 	zipFile, err := os.Create(filePath)
 	if err != nil {
 		return err
@@ -400,8 +401,8 @@ func writeBinaryFile(pid string, pipe_config types.Pipeconfig, filePath string) 
 	zipWriter := zip.NewWriter(zipFile)
 	defer zipWriter.Close()
 
-	for _, file := range libs {
-		addFileToZip(zipWriter, file, pid, pipe_config)
+	for _, file := range binaryFiles {
+		addFileToZip(zipWriter, file, pipe_config)
 	}
 
 	journal.Print(journal.PriInfo, "Tar file created successfully")
@@ -429,6 +430,7 @@ func start() {
 	journal.Print(journal.PriInfo, info)
 	coredump_config.Process_exe_path = strings.Replace(coredump_config.Process_exe_path, "!", "/", -1)
 	//Judge agrs is correct or not.
+	sysrootPath = fmt.Sprintf("/proc/%s", coredump_config.Initial_ns_pid)
 	err = argsJudge()
 	if err != nil {
 		journal.Print(journal.PriErr, err.Error())
@@ -523,7 +525,7 @@ func start() {
 		coredump_config.Storage = fmt.Sprintf("%s/%s_%s_%d.coredump.zip", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
 	}
 	coredump_config.Binary_file = fmt.Sprintf("%s/%s_%s_%d.Binary_file.zip", pipe_config.Storage, coredump_config.Initial_ns_pid, coredump_config.Process_ns_pid, coredump_config.Timestamp)
-	writeBinaryFile(coredump_config.Initial_ns_pid, pipe_config, coredump_config.Binary_file)
+	writeBinaryFile(pipe_config, coredump_config.Binary_file)
 	//write coredump info
 	err = writeCoreConfig(coredump_config)
 	if err != nil {

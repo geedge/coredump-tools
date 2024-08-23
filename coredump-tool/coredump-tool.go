@@ -267,11 +267,14 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 	}
 	var containerCommands []string
 	var containerCommand string
+	var gdbcommand []string
 	if _, err := os.Stat(config.Binary_file); err != nil {
 		fmt.Println(err)
 		containerCommand = "tail -f"
+		gdbcommand = []string{"gdb", config.Process_exe_path, "/host" + config.Storage, "-cd", filepath.Dir(config.Process_exe_path)}
 	} else {
 		containerCommand = fmt.Sprintf("mkdir -p /tmp/sysroot && cd /tmp/sysroot ; unzip -o /host%s ; ldconfig -r /tmp/sysroot ; tail -f ", config.Binary_file)
+		gdbcommand = []string{"gdb", "/tmp/sysroot" + config.Process_exe_path, "/host" + config.Storage, "-cd", filepath.Dir("/tmp/sysroot" + config.Process_exe_path), "-iex", "set sysroot /tmp/sysroot", "-iex", "set solib-search-path /tmp/sysroot/usr/lib:/tmp/sysroot/usr/lib64:/tmp/sysroot/opt/tsg/mrzcpd/icelake-server/lib:/tmp/sysroot/opt/tsg/mrzcpd/corei7/lib:/tmp/sysroot/opt/tsg/mrzcpd/znver1/lib"}
 	}
 	if prestartPath != "" {
 		prestartVolumeMount := v1.VolumeMount{
@@ -358,7 +361,7 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 	// Create exec request
 	var cmd []string
 	if command == "gdb" {
-		cmd = []string{"gdb", config.Process_exe_path, "/host" + config.Storage, "-cd", filepath.Dir(config.Process_exe_path), "-iex", "set sysroot /tmp/sysroot", "-iex", "set solib-search-path /tmp/sysroot/usr/lib64:/tmp/sysroot/opt/tsg/mrzcpd/icelake-server/lib:/tmp/sysroot/opt/tsg/mrzcpd/corei7/lib:/tmp/sysroot/opt/tsg/mrzcpd/znver1/lib"}
+		cmd = gdbcommand
 	} else {
 		cmd = []string{command}
 	}
