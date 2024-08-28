@@ -1,13 +1,16 @@
 package main
 
 import (
+	"archive/tar"
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"coredump-tools/types"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +39,7 @@ var (
 	dirPath      string
 	command      string
 	prestartPath string
+	outFilePath  string
 )
 
 // WalkDirectory search file with suffix name ".info"
@@ -220,11 +224,6 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 	fmt.Println(id.String())
 	podName := fmt.Sprintf("coredump-debug-%s", id.String())
 	containerName := "debug"
-	imageversion, err := getImageVersion()
-	if err != nil {
-		return "", err
-	}
-	image := fmt.Sprintf("registry.gdnt-cloud.website/tsg-init:%s", imageversion)
 	volumeMounts := []v1.VolumeMount{
 		{
 			Name:      "host-dir",
@@ -268,13 +267,20 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 	var containerCommands []string
 	var containerCommand string
 	var gdbcommand []string
+	var image string
 	if _, err := os.Stat(config.Binary_file); err != nil {
 		fmt.Println(err)
 		containerCommand = "tail -f"
 		gdbcommand = []string{"gdb", config.Process_exe_path, "/host" + config.Storage, "-cd", filepath.Dir(config.Process_exe_path)}
+		image = config.Image_name
 	} else {
 		containerCommand = fmt.Sprintf("mkdir -p /tmp/sysroot && cd /tmp/sysroot ; unzip -o /host%s ; ldconfig -r /tmp/sysroot ; tail -f ", config.Binary_file)
 		gdbcommand = []string{"gdb", "/tmp/sysroot" + config.Process_exe_path, "/host" + config.Storage, "-cd", filepath.Dir("/tmp/sysroot" + config.Process_exe_path), "-iex", "set sysroot /tmp/sysroot", "-iex", "set solib-search-path /tmp/sysroot/usr/lib:/tmp/sysroot/usr/lib64:/tmp/sysroot/opt/tsg/mrzcpd/icelake-server/lib:/tmp/sysroot/opt/tsg/mrzcpd/corei7/lib:/tmp/sysroot/opt/tsg/mrzcpd/znver1/lib"}
+		imageversion, err := getImageVersion()
+		if err != nil {
+			return "", err
+		}
+		image = fmt.Sprintf("registry.gdnt-cloud.website/tsg-init:%s", imageversion)
 	}
 	if prestartPath != "" {
 		prestartVolumeMount := v1.VolumeMount{
@@ -396,6 +402,63 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 	return podName, nil
 }
 
+func archive(source string, target string) {
+
+	dir := filepath.Base(source)
+	if target == "" {
+		target = dir + ".tar.gz"
+	}
+	tarfile, err := os.Create(target)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tarfile.Close()
+
+	gzipWriter := gzip.NewWriter(tarfile)
+	defer gzipWriter.Close()
+
+	tarWriter := tar.NewWriter(gzipWriter)
+	defer tarWriter.Close()
+
+	filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+
+		header.Name = filepath.ToSlash(filepath.Join(dir, strings.TrimPrefix(path, source)))
+		if info.IsDir() {
+			header.Name += "/"
+		}
+		fmt.Printf("Header.Name: %v\n", header.Name)
+
+		if err := tarWriter.WriteHeader(header); err != nil {
+			return err
+		}
+
+		if !info.IsDir() {
+			file, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+
+			if _, err := io.Copy(tarWriter, file); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	fmt.Println("Tarball created successfully!")
+}
+
 func command_init() cli.App {
 	return cli.App{
 		Name:  "coredump",
@@ -450,6 +513,48 @@ func command_init() cli.App {
 				Action: func(c *cli.Context) error {
 					WalkDirectory(dirPath)
 					info(pid)
+					return nil
+				},
+			},
+			{
+				Name:    "archive",
+				Aliases: []string{"a"},
+				Usage:   "store coredump file in an archive",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "pid",
+						Aliases:     []string{"p"},
+						Usage:       "Pid to match",
+						Value:       "",
+						Destination: &pid,
+					},
+					&cli.StringFlag{
+						Name:        "dir",
+						Aliases:     []string{"d"},
+						Usage:       "Coredump directory path(default: /var/lib/coredump)",
+						Value:       "/var/lib/coredump",
+						Destination: &dirPath,
+					},
+					&cli.StringFlag{
+						Name:        "output",
+						Aliases:     []string{"o"},
+						Usage:       "store file path",
+						Value:       "",
+						Destination: &outFilePath,
+					},
+				},
+				Action: func(c *cli.Context) error {
+					if pid == "" {
+						archive(dirPath, outFilePath)
+					} else {
+						WalkDirectory(dirPath)
+						for _, c := range configs {
+							if strings.Compare(c.Initial_ns_pid, pid) == 0 {
+								dirPath, _ := filepath.Split(c.Storage)
+								archive(dirPath, outFilePath)
+							}
+						}
+					}
 					return nil
 				},
 			},
