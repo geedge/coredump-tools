@@ -35,11 +35,12 @@ import (
 var configs []types.Coredump_config
 
 var (
-	pid          string
-	dirPath      string
-	command      string
-	prestartPath string
-	outFilePath  string
+	pid            string
+	dirPath        string
+	command        string
+	prestartPath   string
+	outFilePath    string
+	importFilePath string
 )
 
 // WalkDirectory search file with suffix name ".info"
@@ -402,7 +403,58 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 	return podName, nil
 }
 
-func archive(source string, target string) {
+func importCoredump(tarGzFile, destDir string) {
+	file, err := os.Open(tarGzFile)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer file.Close()
+
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		fmt.Printf("can not create gzip.Reader: %v", err)
+		return
+	}
+	defer gzipReader.Close()
+
+	tarReader := tar.NewReader(gzipReader)
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Printf("read tar file's head failed: %v", err)
+			return
+		}
+
+		target := filepath.Join(destDir, header.Name)
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(header.Mode)); err != nil {
+				fmt.Printf("create directory %s failed: %v", target, err)
+			}
+		case tar.TypeReg:
+			outFile, err := os.Create(target)
+			if err != nil {
+				fmt.Printf("create file %s failed: %v", target, err)
+			}
+			defer outFile.Close()
+
+			if _, err := io.Copy(outFile, tarReader); err != nil {
+				fmt.Printf("write file %s failed: %v", target, err)
+			}
+		default:
+			fmt.Printf("a unsupport file type: %v", header.Typeflag)
+		}
+	}
+
+}
+
+func export(source string, target string) {
 
 	dir := filepath.Base(source)
 	if target == "" {
@@ -435,7 +487,6 @@ func archive(source string, target string) {
 		if info.IsDir() {
 			header.Name += "/"
 		}
-		fmt.Printf("Header.Name: %v\n", header.Name)
 
 		if err := tarWriter.WriteHeader(header); err != nil {
 			return err
@@ -456,7 +507,7 @@ func archive(source string, target string) {
 		return nil
 	})
 
-	fmt.Println("Tarball created successfully!")
+	fmt.Println(target + " tarball created successfully!")
 }
 
 func command_init() cli.App {
@@ -517,9 +568,36 @@ func command_init() cli.App {
 				},
 			},
 			{
-				Name:    "archive",
-				Aliases: []string{"a"},
-				Usage:   "store coredump file in an archive",
+				Name:  "import",
+				Usage: "import coredump file from an archive",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "dir",
+						Aliases:     []string{"d"},
+						Usage:       "Coredump directory path(default: /var/lib/coredump)",
+						Value:       "/var/lib/coredump",
+						Destination: &dirPath,
+					},
+					&cli.StringFlag{
+						Name:        "file",
+						Aliases:     []string{"f"},
+						Usage:       "archive file path",
+						Value:       "",
+						Destination: &importFilePath,
+					},
+				},
+				Action: func(c *cli.Context) error {
+					if importFilePath == "" {
+						fmt.Println("Please using -f to indicate the archive file path.Also you can use --help to check all the command")
+						return nil
+					}
+					importCoredump(importFilePath, dirPath)
+					return nil
+				},
+			},
+			{
+				Name:  "export",
+				Usage: "store coredump file in an archive",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:        "pid",
@@ -545,13 +623,13 @@ func command_init() cli.App {
 				},
 				Action: func(c *cli.Context) error {
 					if pid == "" {
-						archive(dirPath, outFilePath)
+						export(dirPath, outFilePath)
 					} else {
 						WalkDirectory(dirPath)
 						for _, c := range configs {
 							if strings.Compare(c.Initial_ns_pid, pid) == 0 {
 								dirPath, _ := filepath.Split(c.Storage)
-								archive(dirPath, outFilePath)
+								export(dirPath, outFilePath)
 							}
 						}
 					}
