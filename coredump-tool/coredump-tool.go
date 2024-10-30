@@ -281,7 +281,7 @@ func debugInpod(conf *rest.Config, clientset *kubernetes.Clientset, config types
 		if err != nil {
 			return "", err
 		}
-		image = fmt.Sprintf("registry.gdnt-cloud.website/tsg-init:%s", imageversion)
+		image = fmt.Sprintf("registry.gdnt-cloud.website/tsg/os/base:%s", imageversion)
 	}
 	if prestartPath != "" {
 		prestartVolumeMount := v1.VolumeMount{
