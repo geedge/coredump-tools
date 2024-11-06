@@ -2,11 +2,14 @@ variables:
   GIT_STRATEGY: "clone"
   BUILD_BASED_IMAGE_CENTOS7: "git.mesalab.cn:7443/mesa_platform/build-env:master"
   BUILD_BASED_IMAGE_ROCKYLINUX8: "git.mesalab.cn:7443/mesa_platform/build-env:rockylinux"
+  BUILD_BASED_IMAGE_ROCKYLINUX9_AARCH64: "git.mesalab.cn:7443/mesa_platform/build-env:rocky9-aarch64"
+
 
 stages:
 - prebuild
 - build-centos7
 - build-rockylinux8
+- build-rockylinux9-aarch
 
 .build_rpm:
   variables:
@@ -22,6 +25,21 @@ stages:
     - ./ci/travis.sh
   tags:
     - share
+
+.build_aarch_rpm:
+  variables:
+    BUILD_PADDING_PREFIX: /tmp/padding_for_CPACK_RPM_BUILD_SOURCE_DIRS_PREFIX_PREFIX_PREFIX_PREFIX_PREFIX_PREFIX/
+    TESTING_VERSION_BUILD: 0
+  before_script:
+    - mkdir -p $BUILD_PADDING_PREFIX/$CI_PROJECT_NAMESPACE/
+    - ln -s $CI_PROJECT_DIR $BUILD_PADDING_PREFIX/$CI_PROJECT_PATH
+    - cd $BUILD_PADDING_PREFIX/$CI_PROJECT_PATH
+    - chmod +x ./ci/travis.sh
+  script:
+    - yum makecache
+    - ./ci/travis.sh
+  tags:
+    - tsg-os-builder-aarch64
 
 feature_branch_build_rockylinux8:
   image: $BUILD_BASED_IMAGE_ROCKYLINUX8
@@ -63,5 +81,49 @@ release_build_rockylinux8:
     PULP3_RPM_REPO_NAME: tsg-stable-x86_64.el8
     PULP3_RPM_DIST_NAME: tsg-stable-x86_64.el8
   extends: .build_rpm
+  only:
+    - tags
+
+# build aarch arch rpm 
+feature_branch_build_rockylinux9_aarch:
+  image: $BUILD_BASED_IMAGE_ROCKYLINUX9_AARCH64
+  stage: build-rockylinux9-aarch
+  variables:
+    PACKAGE: 1
+    LIBYAML_BUILD: 1
+    TESTING_VERSION_BUILD: 1
+  extends: .build_aarch_rpm
+  except:
+    - tags
+    - /^dev-.*$/i
+    - /^rel-.*$/i
+    - /^master.*$/i
+
+develop_build_rockylinux9_aarch:
+  image: $BUILD_BASED_IMAGE_ROCKYLINUX9_AARCH64
+  stage: build-rockylinux9-aarch
+  variables:
+    PACKAGE: 1
+    UPLOAD: 1
+    LIBYAML_BUILD: 1
+    TESTING_VERSION_BUILD: 1
+    PULP3_RPM_REPO_NAME: tsg-testing-aarch64.el9
+    PULP3_RPM_DIST_NAME: tsg-testing-aarch64.el9
+  extends: .build_aarch_rpm
+  only:
+    - /^dev-.*$/i
+    - /^rel-.*$/i
+    - /^master.*$/i
+
+release_build_rockylinux9_aarch:
+  image: $BUILD_BASED_IMAGE_ROCKYLINUX9_AARCH64
+  stage: build-rockylinux9-aarch
+  variables:
+    PACKAGE: 1
+    UPLOAD: 1
+    LIBYAML_BUILD: 1
+    PULP3_RPM_REPO_NAME: tsg-stable-aarch64.el9
+    PULP3_RPM_DIST_NAME: tsg-stable-aarch64.el9
+  extends: .build_aarch_rpm
   only:
     - tags
